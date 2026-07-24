@@ -53,10 +53,16 @@ what the local gateway API exposes.
 
 Planned project areas:
 
-- Android APK companion app.
 - Standalone web frontend package.
 - Additional gateway adapters.
 - Safer local adapter tooling for owner-controlled modem labs.
+
+The native Android app is now started under [android/](android/). It runs on the
+phone while the user has the app open and intentionally does not include the
+web/Docker watchdog's 24/7 background internet monitoring.
+
+Docker Hub page copy is available in
+[docs/DOCKER_HUB_README.md](docs/DOCKER_HUB_README.md).
 
 ## Quick Start With Docker
 
@@ -258,7 +264,7 @@ Repository settings required for publishing:
 ```text
 tmhi-control-center/
 +-- backend/                  FastAPI app, gateway clients, tests, static UI
-+-- android/                  Android APK source placeholder
++-- android/                  Native Android app
 +-- web/                      Future standalone web app placeholder
 +-- deploy/                   Optional deployment examples
 +-- docs/                     User and developer documentation

@@ -21,11 +21,12 @@ tmhi-control-center/
 |   +-- pyproject.toml
 |   +-- requirements.txt
 |   +-- requirements-dev.txt
-+-- android/                   Android APK source placeholder
++-- android/                   Native Android app
 +-- web/                       Future standalone web app placeholder
 +-- deploy/                    Optional deployment examples
 +-- docs/                      Additional project documentation
 |   +-- G4AR_FIRMWARE_LAB_GUIDE.md
+|   +-- DOCKER_HUB_README.md
 +-- .github/                   Issue/PR templates and active Actions workflows
 +-- .env.example               Reference for generated settings
 +-- .gitignore

@@ -19,6 +19,11 @@ htmlcov/
 build/
 dist/
 
+# Android
+.gradle/
+.kotlin/
+local.properties
+
 # Runtime data
 data/
 *.db
