@@ -1,5 +1,6 @@
 param(
-    [string]$DockerHubUsername = ""
+    [string]$DockerHubUsername = "",
+    [string]$Repository = "kevin1724/tmhi-control-center"
 )
 
 $ErrorActionPreference = "Stop"
@@ -29,7 +30,7 @@ if (-not $dockerHubToken) {
     throw "Docker Hub token is required."
 }
 
-gh variable set DOCKERHUB_USERNAME --body $DockerHubUsername
-$dockerHubToken | gh secret set DOCKERHUB_TOKEN --body-file -
+gh variable set DOCKERHUB_USERNAME --repo $Repository --body $DockerHubUsername
+gh secret set DOCKERHUB_TOKEN --repo $Repository --body $dockerHubToken
 
-Write-Host "Configured GitHub Actions Docker Hub variable and secret."
+Write-Host "Configured GitHub Actions Docker Hub variable and secret for $Repository."

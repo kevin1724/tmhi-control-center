@@ -2,6 +2,7 @@
 set -euo pipefail
 
 DOCKERHUB_USERNAME="${1:-}"
+REPOSITORY="${2:-kevin1724/tmhi-control-center}"
 
 if ! command -v gh >/dev/null 2>&1; then
   echo "Error: GitHub CLI (gh) is not installed." >&2
@@ -27,7 +28,7 @@ if [[ -z "$DOCKERHUB_TOKEN" ]]; then
   exit 1
 fi
 
-gh variable set DOCKERHUB_USERNAME --body "$DOCKERHUB_USERNAME"
-printf '%s' "$DOCKERHUB_TOKEN" | gh secret set DOCKERHUB_TOKEN --body-file -
+gh variable set DOCKERHUB_USERNAME --repo "$REPOSITORY" --body "$DOCKERHUB_USERNAME"
+gh secret set DOCKERHUB_TOKEN --repo "$REPOSITORY" --body "$DOCKERHUB_TOKEN"
 
-echo "Configured GitHub Actions Docker Hub variable and secret."
+echo "Configured GitHub Actions Docker Hub variable and secret for $REPOSITORY."
