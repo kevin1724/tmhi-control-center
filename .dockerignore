@@ -1,0 +1,15 @@
+.git
+.git-old-*
+.github
+.env
+.venv
+__pycache__
+*.py[cod]
+.pytest_cache
+backend/tests
+docs
+android
+web
+data
+*.db
+*.zip

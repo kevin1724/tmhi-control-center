@@ -1,0 +1,17 @@
+services:
+  tmhi-control-center:
+    build: .
+    image: tmhi-control-center:local
+    container_name: tmhi-control-center
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8088}:8000"
+    volumes:
+      - tmhi_control_center_data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  tmhi_control_center_data:

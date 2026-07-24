@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TMHI Control Center</title>
+    <meta name="theme-color" content="#17231f" />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar__brand">
+        <div>
+          <p class="eyebrow">TMHI Gateway</p>
+          <h1>Control Center</h1>
+        </div>
+      </div>
+      <div class="topbar__status">
+        <button id="tutorialButton" class="button button--secondary button--compact" type="button">
+          Help
+        </button>
+        <span id="phasePill" class="phase-pill phase-pill--unknown">Initializing</span>
+        <span id="updatedAt" class="muted">Not refreshed</span>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel panel--wide" aria-labelledby="statusHeading">
+        <div class="panel__header">
+          <h2 id="statusHeading">Status</h2>
+          <button id="refreshButton" class="button button--secondary" type="button">
+            Refresh
+          </button>
+        </div>
+        <div class="metric-grid">
+          <div class="metric">
+            <span>Internet</span>
+            <strong id="internetValue">Unknown</strong>
+          </div>
+          <div class="metric">
+            <span>Probes</span>
+            <strong id="probeValue">0 / 0</strong>
+          </div>
+          <div class="metric">
+            <span>Gateway</span>
+            <strong id="gatewayValue">Unknown</strong>
+          </div>
+          <div class="metric">
+            <span>Dry run</span>
+            <strong id="dryRunValue">Unknown</strong>
+          </div>
+          <div class="metric">
+            <span>Last check</span>
+            <strong id="lastCheckValue">Never</strong>
+          </div>
+          <div class="metric">
+            <span>24h reboots</span>
+            <strong id="rebootValue">0</strong>
+          </div>
+        </div>
+        <div id="lastError" class="alert alert--hidden" role="status"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="controlsHeading">
+        <div class="panel__header">
+          <h2 id="controlsHeading">Controls</h2>
+          <span id="settingsState" class="tag">Checking</span>
+        </div>
+
+        <div class="settings-grid" aria-label="Automation settings">
+          <label class="switch-line" for="dryRunToggle">
+            <span>
+              Dry run
+              <small id="dryRunHint">Test only</small>
+            </span>
+            <input id="dryRunToggle" type="checkbox" checked />
+          </label>
+          <label for="testsPerHour">
+            Tests per hour
+            <input id="testsPerHour" type="number" min="1" max="720" step="1" value="180" />
+          </label>
+          <button id="saveSettingsButton" class="button button--secondary" type="button">
+            Save settings
+          </button>
+        </div>
+
+        <div class="login-status">
+          <span>Gateway login</span>
+          <span id="gatewayLoginState" class="tag">Checking</span>
+        </div>
+
+        <div id="gatewayPasswordRow" class="secret-row">
+          <label for="gatewayPassword">Gateway admin password</label>
+          <input
+            id="gatewayPassword"
+            type="password"
+            autocomplete="current-password"
+            placeholder="Enter to save or test"
+          />
+        </div>
+
+        <div class="gateway-login-actions">
+          <label class="checkbox-line" for="saveGatewayLogin">
+            <input id="saveGatewayLogin" type="checkbox" checked />
+            Remember
+          </label>
+          <button id="saveGatewayLoginButton" class="button button--primary" type="button">
+            Log in
+          </button>
+          <button id="clearGatewayLoginButton" class="button button--ghost" type="button">
+            Forget
+          </button>
+        </div>
+
+        <div class="control-grid">
+          <button id="checkButton" class="button button--primary" type="button">
+            Run check
+          </button>
+          <button id="gatewayButton" class="button button--secondary" type="button">
+            Test gateway
+          </button>
+          <label class="checkbox-line" for="forceReboot">
+            <input id="forceReboot" type="checkbox" />
+            Force
+          </label>
+          <button id="rebootButton" class="button button--danger" type="button">
+            Request reboot
+          </button>
+        </div>
+
+        <div id="actionMessage" class="message" role="status" aria-live="polite"></div>
+      </section>
+
+      <section class="panel panel--wide" aria-labelledby="seriesHeading">
+        <div class="panel__header">
+          <h2 id="seriesHeading">Connection Tests</h2>
+          <span id="seriesState" class="tag">Idle</span>
+        </div>
+
+        <form id="seriesForm" class="series-form">
+          <label for="seriesCount">
+            Tests
+            <input id="seriesCount" type="number" min="1" max="30" step="1" value="5" />
+          </label>
+          <label for="seriesInterval">
+            Seconds apart
+            <input
+              id="seriesInterval"
+              type="number"
+              min="0"
+              max="300"
+              step="1"
+              value="10"
+            />
+          </label>
+          <button id="seriesStartButton" class="button button--primary" type="submit">
+            Start tests
+          </button>
+          <button id="seriesStopButton" class="button button--secondary" type="button" disabled>
+            Stop
+          </button>
+        </form>
+
+        <div class="progress-line">
+          <progress id="seriesProgress" value="0" max="100"></progress>
+          <span id="seriesProgressText">0 / 0 complete</span>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Run</th>
+                <th>Time</th>
+                <th>Internet</th>
+                <th>Probes</th>
+                <th>Phase</th>
+              </tr>
+            </thead>
+            <tbody id="seriesResults">
+              <tr>
+                <td colspan="5" class="empty-cell">No test runs yet</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="probeHeading">
+        <div class="panel__header">
+          <h2 id="probeHeading">Probe Results</h2>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>URL</th>
+                <th>Status</th>
+                <th>Latency</th>
+              </tr>
+            </thead>
+            <tbody id="probeResults">
+              <tr>
+                <td colspan="3" class="empty-cell">No probes yet</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="configHeading">
+        <div class="panel__header">
+          <h2 id="configHeading">Configuration</h2>
+        </div>
+        <dl id="configList" class="config-list"></dl>
+      </section>
+
+      <section class="panel panel--wide" aria-labelledby="eventsHeading">
+        <div class="panel__header">
+          <h2 id="eventsHeading">Events</h2>
+          <button id="eventsButton" class="button button--secondary" type="button">
+            Reload
+          </button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Kind</th>
+                <th>Message</th>
+              </tr>
+            </thead>
+            <tbody id="eventRows">
+              <tr>
+                <td colspan="3" class="empty-cell">No events loaded</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <div id="tutorialModal" class="modal modal--hidden" role="dialog" aria-modal="true" aria-labelledby="tutorialHeading">
+      <div class="modal__panel">
+        <div class="modal__header">
+          <h2 id="tutorialHeading">Quick start</h2>
+          <button id="tutorialCloseButton" class="button button--ghost" type="button">
+            Close
+          </button>
+        </div>
+        <ol class="tutorial-list">
+          <li>Save the gateway admin password with Remember checked.</li>
+          <li>Click Test gateway and Run check to confirm the Docker host can reach everything.</li>
+          <li>Leave Dry run on while testing; reboot requests are logged but not sent.</li>
+          <li>When both tests pass, turn Dry run off and save settings.</li>
+        </ol>
+        <button id="tutorialDoneButton" class="button button--primary" type="button">
+          Got it
+        </button>
+      </div>
+    </div>
+
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>

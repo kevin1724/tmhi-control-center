@@ -1,0 +1,27 @@
+# Optional local-dev example with the watchdog loop disabled.
+services:
+  tmhi-control-center:
+    build: ..
+    image: tmhi-control-center:local
+    container_name: tmhi-control-center-local
+    restart: unless-stopped
+    environment:
+      API_TOKEN: dev-token
+      DRY_RUN: "true"
+      WATCHDOG_ENABLED: "false"
+      GATEWAY_HOST: 192.168.12.1
+      GATEWAY_PORT: "8080"
+      GATEWAY_USERNAME: admin
+      CHECK_INTERVAL_SECONDS: "20"
+      FAILURE_THRESHOLD_SECONDS: "180"
+      STARTUP_GRACE_SECONDS: "0"
+      DATABASE_PATH: /data/control-center-local.db
+      LOG_LEVEL: INFO
+    ports:
+      - "8088:8000"
+    volumes:
+      - ../data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
