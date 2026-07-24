@@ -12,4 +12,4 @@ All notable changes to this new project will be documented here.
 - Removed copied favicon, Apple touch icon, web manifest, and PNG app icons.
 - Removed the old prebuilt-image and publish workflow references.
 - Added a new active GitHub Actions workflow for tests, Docker builds, and Docker Hub publishing.
-- Updated Docker Compose, scripts, tests, and docs for the new project name.
+- Updated Docker Compose, tests, and docs for the new project name.

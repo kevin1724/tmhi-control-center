@@ -23,7 +23,6 @@ tmhi-control-center/
 ├── web/                       Future standalone web app placeholder
 ├── deploy/                    Optional deployment examples
 ├── docs/                      Additional project documentation
-├── scripts/                   New-repository helper scripts
 ├── .github/                   Issue/PR templates and active Actions workflows
 ├── .env.example               Reference for generated settings
 ├── .gitignore

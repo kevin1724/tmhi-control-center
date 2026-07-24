@@ -40,7 +40,6 @@ tmhi-control-center/
 ├── web/
 ├── deploy/
 ├── docs/
-├── scripts/
 ├── .github/
 ├── .env.example
 ├── .gitignore
@@ -94,20 +93,11 @@ On pull requests, it runs backend tests and verifies the Docker image builds. On
 pushes to `main`, version tags like `v0.1.1`, or manual runs, it builds and
 publishes a multi-architecture Docker Hub image.
 
-When you are ready to create the new GitHub repository:
+The GitHub repository is:
 
-```powershell
-.\scripts\create-github-repo.ps1 -RepoName tmhi-control-center -Visibility public
+```text
+https://github.com/kevin1724/tmhi-control-center
 ```
-
-Or from a Bash shell:
-
-```bash
-./scripts/create-github-repo.sh tmhi-control-center public
-```
-
-The helper scripts refuse to reuse an existing `origin` remote. That is
-deliberate so the new project does not get pushed to the old repo by mistake.
 
 ## Docker Hub Publishing
 
@@ -122,16 +112,16 @@ Then configure the GitHub repository with:
 - Actions variable: `DOCKERHUB_USERNAME`
 - Actions secret: `DOCKERHUB_TOKEN`
 
-The PowerShell helper can set both values after the GitHub repo exists:
+From PowerShell, set the repository variable:
 
 ```powershell
-.\scripts\configure-dockerhub-github.ps1 -DockerHubUsername YOUR_DOCKERHUB_USERNAME
+gh variable set DOCKERHUB_USERNAME --repo kevin1724/tmhi-control-center --body kevina1724
 ```
 
-Or from a Bash shell:
+Then set the repository secret. Paste your Docker Hub access token when prompted:
 
-```bash
-./scripts/configure-dockerhub-github.sh YOUR_DOCKERHUB_USERNAME
+```powershell
+gh secret set DOCKERHUB_TOKEN --repo kevin1724/tmhi-control-center
 ```
 
 The workflow publishes to:
