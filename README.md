@@ -12,6 +12,15 @@ stay on the user's own system.
 > TMHI Control Center is an unofficial community project. It is not affiliated
 > with, endorsed by, or supported by T-Mobile.
 
+## Download The Android App
+
+Download the latest Android APK:
+
+- [tmhi-control-center-debug.apk](https://github.com/kevin1724/tmhi-control-center/releases/download/android-latest/tmhi-control-center-debug.apk)
+
+This is an early debug APK for testing. Android may ask the user to allow
+installs from unknown sources. A signed release build will be added later.
+
 ## What It Does
 
 - Shows live gateway health, internet status, cellular connection details, and
