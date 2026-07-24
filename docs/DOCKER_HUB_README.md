@@ -7,6 +7,11 @@ gateway status, signal quality, cellular details, connected devices, tower map
 data, Wi-Fi settings, diagnostics, and advanced owner-controlled G4AR lab
 workflows.
 
+It also includes a Homelab control room with a setup score, next-best-action
+guidance, signal and antenna coaching, router offload/SQM planning, redacted
+snapshot export, and a plain-English local adapter guide for owned G4AR lab
+hardware.
+
 This is an unofficial community project. It is not affiliated with, endorsed by,
 or supported by T-Mobile.
 
@@ -89,6 +94,9 @@ Username: admin
 - Connected-device list with best-effort vendor/device identification.
 - Tower map using Leaflet, OpenStreetMap, and optional OpenCellID data.
 - Public-IP or saved-location map centering.
+- Homelab readiness checklist, setup coach, signal tuning tips, and router
+  offload/SQM workflow guidance.
+- Redacted troubleshooting snapshot export for before/after placement notes.
 - Connectivity probes, event history, and diagnostic sweeps.
 - Reboot safety logic with dry-run mode, grace periods, cooldowns, and daily
   reboot limits.
@@ -135,6 +143,12 @@ The lab can store:
 - Stock firmware backup metadata.
 - SHA-256 backup and firmware hashes.
 - Risk acknowledgement and consent-gate state.
+
+The local adapter URL is not the stock gateway login page. It is the base URL of
+a LAN-only service running on trusted hardware the user controls, such as an
+OpenWrt/ROOTer router, Raspberry Pi, mini PC, or Linux host. The adapter is
+expected to expose narrow endpoints like `GET /health` and
+`POST /g4ar/firmware/backup`.
 
 Important limitations:
 

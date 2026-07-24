@@ -29,6 +29,7 @@ from .firmware_backup import (
 )
 from .gateway import GatewayAuthenticationError, GatewayError, UnifiedGatewayClient
 from .geolocation import PublicIpLocationError, PublicIpLocator
+from .insights import build_homelab_insights
 from .storage import EventStore
 from .towers import build_tower_map_payload
 from .watchdog import Watchdog
@@ -187,6 +188,16 @@ def _overview_has_location(overview: dict[str, Any]) -> bool:
     )
 
 
+async def _collect_or_error(label: str, call, default: Any) -> Any:
+    try:
+        return await call()
+    except Exception as exc:
+        logger.warning("%s snapshot collection failed: %s", label, exc)
+        if isinstance(default, dict):
+            return {**default, "error": str(exc)}
+        return default
+
+
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -208,6 +219,63 @@ async def status() -> dict[str, Any]:
 @app.get("/api/config")
 async def config() -> dict[str, Any]:
     return settings.safe_summary()
+
+
+@app.get("/api/homelab/snapshot")
+async def homelab_snapshot(
+    include_nearby: bool = Query(default=False),
+) -> dict[str, Any]:
+    safe_config = settings.safe_summary()
+    status_payload = await _collect_or_error(
+        "status",
+        watchdog.status_snapshot,
+        {},
+    )
+    overview = await _collect_or_error(
+        "gateway overview",
+        gateway.overview,
+        {},
+    )
+    wifi = await _collect_or_error(
+        "gateway Wi-Fi",
+        gateway.wifi_config,
+        {},
+    )
+    clients = await _collect_or_error(
+        "gateway clients",
+        lambda: gateway.connected_devices(online_vendor_lookup=False),
+        {"count": 0, "devices": []},
+    )
+    map_payload = await build_tower_map_payload(
+        overview if isinstance(overview, dict) else {},
+        settings=settings,
+        include_nearby=include_nearby,
+    )
+    events_payload = await store.recent(50)
+    firmware_backups = list_g4ar_firmware_backups(settings.firmware_backup_dir)
+    insights = build_homelab_insights(
+        config=safe_config,
+        status=status_payload if isinstance(status_payload, dict) else {},
+        overview=overview if isinstance(overview, dict) else {},
+        wifi=wifi if isinstance(wifi, dict) else {},
+        clients=clients if isinstance(clients, dict) else {"count": 0, "devices": []},
+        map_data=map_payload,
+        events=events_payload,
+        firmware_backups=firmware_backups,
+    )
+    return {
+        "generated_at": map_payload.get("observed_at"),
+        "version": __version__,
+        "config": safe_config,
+        "status": status_payload,
+        "overview": overview,
+        "wifi": wifi,
+        "clients": clients,
+        "map": map_payload,
+        "events": events_payload,
+        "firmware_backups": firmware_backups,
+        "insights": insights,
+    }
 
 
 @app.get("/api/gateway/overview")

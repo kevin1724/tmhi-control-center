@@ -15,6 +15,9 @@ watchdog, scheduled internet monitor, or 24/7 reboot service.
 - Wi-Fi SSID and gateway Wi-Fi radio controls when supported by the gateway API.
 - Tower map screen using OpenStreetMap/Leaflet in a WebView and optional
   OpenCellID lookups.
+- Homelab tab with setup readiness score, next-best-action guidance, signal and
+  antenna coaching, router offload/SQM playbook, adapter URL guide, and backup
+  status.
 - Manual diagnostics, raw gateway data sections, and a manual reboot action.
 - G4AR Unlock / Radio Lab settings for owner-controlled G4AR units.
 - Local adapter stock-backup request for G4AR lab users, saved in the app's
@@ -76,7 +79,8 @@ pushed to `main`, GitHub Actions builds a debug APK and uploads it as the
 4. Save the gateway admin password.
 5. Tap `Test`.
 6. Go to `Dashboard` and refresh.
-7. Optional: add an OpenCellID key on the `Map` screen.
+7. Open `Homelab` to review the setup checklist and next best action.
+8. Optional: add an OpenCellID key on the `Map` screen.
 
 Most gateways use:
 
@@ -93,3 +97,7 @@ store lab intent, radio-profile preference, local adapter URL, risk
 acknowledgement, and local stock-backup manifests. Device-specific firmware
 operations must be implemented by a trusted local adapter and require verified
 backup/recovery first.
+
+The local adapter URL is not the stock gateway login page. It is a LAN-only HTTP
+service running on hardware the user controls, such as OpenWrt/ROOTer, a
+Raspberry Pi, a mini PC, or a Linux host attached to the lab hardware.

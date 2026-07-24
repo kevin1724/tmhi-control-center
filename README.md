@@ -25,6 +25,8 @@ installs from unknown sources. A signed release build will be added later.
 
 - Shows live gateway health, internet status, cellular connection details, and
   signal quality.
+- Gives a Homelab readiness score with next-best-action guidance for setup,
+  signal tuning, tower data, LAN inventory, watchdog safety, and G4AR backups.
 - Displays useful gateway data such as model, firmware, uptime, WAN info,
   cellular band, PCI, TAC/LAC, cell ID, and radio state when available.
 - Lists connected LAN/Wi-Fi devices with best-effort vendor and device guesses.
@@ -34,6 +36,10 @@ installs from unknown sources. A signed release build will be added later.
   OpenStreetMap, and optional OpenCellID data.
 - Uses public-IP location estimates or saved map coordinates to help center
   tower searches.
+- Exports a redacted troubleshooting snapshot for placement notes, support
+  requests, and before/after tuning records.
+- Includes homelab workflows for router offload mode, SQM/QoS planning, antenna
+  placement, tower notes, recovery discipline, and device inventory.
 - Runs connectivity probes and records events for troubleshooting outages.
 - Includes reboot safeguards from the original watchdog workflow.
 - Includes a G4AR Unlock / Radio Lab for owned Arcadyan TMO-G4AR gateways, with
@@ -66,7 +72,7 @@ Planned project areas:
 - Additional gateway adapters.
 - Safer local adapter tooling for owner-controlled modem labs.
 
-The native Android app is now started under [android/](android/). It runs on the
+The native Android app lives under [android/](android/). It runs locally on the
 phone while the user has the app open and intentionally does not include the
 web/Docker watchdog's 24/7 background internet monitoring.
 
@@ -117,9 +123,11 @@ another service already uses that port.
 3. Save the gateway admin password.
 4. Click `Test` to confirm the app can reach the gateway.
 5. Go to `Dashboard` and click `Refresh`.
-6. Optional: add an OpenCellID API key under `Tower Data` for nearby tower
+6. Review the `Setup Coach` card and open `Homelab` for the full readiness
+   checklist.
+7. Optional: add an OpenCellID API key under `Tower Data` for nearby tower
    lookups.
-7. Optional: save a map center or use browser location so tower searches start
+8. Optional: save a map center or use browser location so tower searches start
    near the gateway.
 
 Most T-Mobile Home Internet gateways use:
@@ -168,6 +176,10 @@ quality, cellular details, and quick actions.
 `Map` shows the serving cell, gateway/map center, nearby OpenCellID results, and
 important notes about tower locking limitations.
 
+`Homelab` shows the setup score, next action, signal and antenna coach, router
+offload/SQM playbook, G4AR backup status, and a plain-English local adapter URL
+guide.
+
 `Diagnostics` shows connectivity probes, event history, raw gateway sections,
 and repeated probe sweeps.
 
@@ -192,6 +204,13 @@ Use the lab for:
 Read the guide before enabling this mode:
 
 - [G4AR Firmware Lab Guide](docs/G4AR_FIRMWARE_LAB_GUIDE.md)
+
+The local adapter URL is not the stock gateway login page. It is the base URL of
+a small HTTP service running on trusted LAN hardware controlled by the user,
+such as an OpenWrt/ROOTer router, Raspberry Pi, mini PC, or Linux host. The
+adapter is where device-specific backup, scan, and radio-profile commands live.
+TMHI Control Center only calls narrow endpoints such as `GET /health` and
+`POST /g4ar/firmware/backup`.
 
 Important limitations:
 

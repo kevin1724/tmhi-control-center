@@ -84,6 +84,7 @@ private enum class Screen(val label: String) {
     Dashboard("Dashboard"),
     Devices("Devices"),
     Map("Map"),
+    Homelab("Homelab"),
     Diagnostics("Diagnostics"),
     Settings("Settings"),
 }
@@ -156,6 +157,11 @@ private fun TmhiApp(state: AppUiState, viewModel: TmhiViewModel) {
                     onSaveSettings = viewModel::updateSettings,
                     onRefresh = viewModel::refreshTowers,
                 )
+                Screen.Homelab -> HomelabScreen(
+                    state = state,
+                    onRefresh = { viewModel.refreshAll(includeNearbyTowers = false) },
+                    onCreateBackup = viewModel::createFirmwareBackup,
+                )
                 Screen.Diagnostics -> DiagnosticsScreen(
                     state = state,
                     onRefresh = { viewModel.refreshAll(includeNearbyTowers = false) },
@@ -190,6 +196,9 @@ private fun DashboardScreen(state: AppUiState, onRefresh: () -> Unit) {
                 MetricCard("Score", state.overview?.signal?.score?.let { "$it%" } ?: "--")
                 MetricCard("Clients", state.clients.size.toString())
             }
+        }
+        item {
+            SetupCoachCard(state, compact = true)
         }
         item {
             SectionCard("Connection") {
@@ -277,6 +286,109 @@ private fun DevicesScreen(
                 DetailRow("Connection", listOf(device.interfaceName, device.band, device.ssid).filter { it.isNotBlank() }.joinToString(" / ").ifBlank { "Unknown" })
                 DetailRow("Vendor", device.vendor.ifBlank { "Unknown" })
                 DetailRow("Best guess", device.bestGuess)
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomelabScreen(
+    state: AppUiState,
+    onRefresh: () -> Unit,
+    onCreateBackup: () -> Unit,
+) {
+    val insights = buildAndroidInsights(state)
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = screenPadding(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            SectionCard("Homelab Control Room") {
+                Text(
+                    "${insights.readiness.score}% ${insights.readiness.label}",
+                    style = MaterialTheme.typography.displaySmall,
+                    fontWeight = FontWeight.Black,
+                )
+                Text(insights.readiness.summary, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                DetailRow("Next action", insights.readiness.nextAction)
+                Button(onClick = onRefresh, enabled = !state.loading, modifier = Modifier.fillMaxWidth()) {
+                    Text("Refresh Baseline")
+                }
+            }
+        }
+        item {
+            SectionCard("Readiness Checklist") {
+                insights.setupSteps.forEach { step -> StepRow(step) }
+            }
+        }
+        item {
+            SectionCard("Signal and Antenna Coach") {
+                insights.signalTips.forEach { tip -> InsightRow(tip.title, tip.detail, tip.tone) }
+            }
+        }
+        item {
+            SectionCard("Homelab Playbook") {
+                insights.playbook.forEach { card ->
+                    Text(card.title, fontWeight = FontWeight.Black)
+                    Text(card.summary, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    card.actions.forEach { action -> Text("- $action") }
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+        }
+        item {
+            SectionCard("Local Adapter URL") {
+                val adapterReady = state.settings.advancedMode == AdvancedMode.G4arUnlockLab &&
+                    state.settings.advancedAcknowledged &&
+                    state.settings.adapterUrl.isNotBlank()
+                DetailRow("Status", if (adapterReady) "Adapter configured" else "Setup needed")
+                Text(
+                    "This is not the stock gateway login page. It is a LAN-only HTTP service running on hardware you control, such as OpenWrt/ROOTer, a Raspberry Pi, a mini PC, or a Linux box attached to the modem lab hardware.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text("How to get one", fontWeight = FontWeight.Black)
+                adapterGuideSteps().forEachIndexed { index, step ->
+                    Text("${index + 1}. $step")
+                }
+                Text("Examples", fontWeight = FontWeight.Black)
+                listOf("http://router.local:8080", "http://192.168.1.2:8765", "http://rooter.lan:8080").forEach {
+                    DetailRow("URL", it)
+                }
+                Text("Expected endpoints", fontWeight = FontWeight.Black)
+                listOf(
+                    "GET /health",
+                    "POST /g4ar/firmware/backup",
+                    "POST /modem/radio/profile",
+                    "POST /modem/cell/scan",
+                    "POST /modem/lock",
+                ).forEach { Text(it) }
+                InsightRow(
+                    "Safety check",
+                    "Keep the adapter LAN-only. Do not flash random images, and do not continue without a stock backup, hashes, and a tested restore path.",
+                    "warn",
+                )
+            }
+        }
+        item {
+            SectionCard("G4AR Backup Status") {
+                if (state.backups.isEmpty()) {
+                    MutedText("No local stock backups saved on this phone yet.")
+                } else {
+                    state.backups.forEach { backup ->
+                        DetailRow(backup.id, "${backup.artifactCount} files - ${backup.firmwareVersion.ifBlank { "firmware unknown" }}")
+                    }
+                }
+                OutlinedButton(
+                    onClick = onCreateBackup,
+                    enabled = state.settings.advancedMode == AdvancedMode.G4arUnlockLab &&
+                        state.settings.advancedAcknowledged &&
+                        state.settings.adapterUrl.isNotBlank() &&
+                        !state.actionBusy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Create Stock Backup")
+                }
             }
         }
     }
@@ -467,11 +579,18 @@ private fun SettingsScreen(
                     "For owner-controlled Arcadyan TMO-G4AR units only. Backup and recovery should be verified before any firmware work.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Text(
+                    "The local adapter URL is not the stock gateway login URL. It is a LAN-only service on hardware you control that exposes safe backup, scan, and radio-profile endpoints for lab hardware.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Enable lab", modifier = Modifier.weight(1f))
                     Switch(checked = labEnabled, onCheckedChange = { labEnabled = it })
                 }
                 OutlinedTextField(adapterUrl, { adapterUrl = it }, label = { Text("Local adapter URL") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                DetailRow("Example", "http://router.local:8080")
+                DetailRow("Health check", "GET /health")
+                DetailRow("Backup endpoint", "POST /g4ar/firmware/backup")
                 RadioProfilePicker(radioProfile, enabled = labEnabled) { radioProfile = it }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = acknowledged, onCheckedChange = { acknowledged = it && labEnabled }, enabled = labEnabled)
@@ -522,6 +641,73 @@ private fun RadioProfilePicker(
             }
         }
         Text(selected.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun SetupCoachCard(state: AppUiState, compact: Boolean) {
+    val insights = buildAndroidInsights(state)
+    SectionCard("Setup Coach") {
+        DetailRow("Readiness", "${insights.readiness.score}% ${insights.readiness.label}")
+        Text(insights.readiness.summary, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        DetailRow("Next action", insights.readiness.nextAction)
+        insights.setupSteps
+            .let { if (compact) it.take(4) else it }
+            .forEach { step -> StepRow(step) }
+    }
+}
+
+@Composable
+private fun StepRow(step: SetupStep) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TonePill(step.status.uppercase(), step.tone)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(step.title, fontWeight = FontWeight.Black)
+                Text(step.detail, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(step.action, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun InsightRow(title: String, detail: String, tone: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TonePill(tone.uppercase(), tone)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.Black)
+                Text(detail, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TonePill(label: String, tone: String) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = toneColor(tone).copy(alpha = 0.16f),
+        contentColor = toneColor(tone),
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Black,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+        )
+    }
+}
+
+@Composable
+private fun toneColor(tone: String): Color {
+    return when (tone) {
+        "good" -> Color(0xFF0F766E)
+        "bad" -> Color(0xFFC2410C)
+        "warn" -> Color(0xFFA16207)
+        "info" -> MaterialTheme.colorScheme.secondary
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 }
 
@@ -619,6 +805,283 @@ private fun MapWebView(data: TowerMapData, modifier: Modifier = Modifier) {
             )
         },
     )
+}
+
+private data class AndroidInsights(
+    val readiness: Readiness,
+    val setupSteps: List<SetupStep>,
+    val signalTips: List<SignalTip>,
+    val playbook: List<PlaybookCard>,
+)
+
+private data class Readiness(
+    val score: Int,
+    val label: String,
+    val summary: String,
+    val nextAction: String,
+)
+
+private data class SetupStep(
+    val title: String,
+    val status: String,
+    val tone: String,
+    val detail: String,
+    val action: String,
+    val weight: Int,
+)
+
+private data class SignalTip(
+    val title: String,
+    val detail: String,
+    val tone: String,
+)
+
+private data class PlaybookCard(
+    val title: String,
+    val tone: String,
+    val summary: String,
+    val actions: List<String>,
+)
+
+private fun buildAndroidInsights(state: AppUiState): AndroidInsights {
+    val steps = androidSetupSteps(state)
+    return AndroidInsights(
+        readiness = androidReadiness(state, steps),
+        setupSteps = steps,
+        signalTips = androidSignalTips(state),
+        playbook = androidPlaybookCards(state),
+    )
+}
+
+private fun androidReadiness(state: AppUiState, steps: List<SetupStep>): Readiness {
+    val totalWeight = steps.sumOf { it.weight }.coerceAtLeast(1)
+    val earned = steps.filter { it.status == "done" || it.status == "optional" }.sumOf { it.weight }
+    val score = ((earned.toDouble() / totalWeight.toDouble()) * 100.0).toInt()
+    val signalScore = state.overview?.signal?.score
+    val next = steps.firstOrNull { it.status != "done" && it.status != "optional" }
+    val label = when {
+        score >= 85 && (signalScore == null || signalScore >= 70) -> "Dialed in"
+        score >= 65 -> "Operational"
+        state.overview?.reachable == false -> "Needs recovery"
+        else -> "Needs setup"
+    }
+    val summary = when {
+        state.overview?.reachable == false -> "Gateway telemetry is offline. Verify Wi-Fi/LAN, host, port, and login before changing settings."
+        signalScore != null && signalScore < 50 -> "Core setup is usable, but signal quality should be tuned before chasing firmware or tower changes."
+        score >= 85 -> "The key setup pieces are in place. Use sweeps and snapshots to tune placement over time."
+        score >= 65 -> "The control center is usable. Finish the remaining setup items to make troubleshooting easier."
+        else -> "Start with gateway login, map center, and a baseline signal reading."
+    }
+    return Readiness(
+        score = score,
+        label = label,
+        summary = summary,
+        nextAction = next?.action ?: "Run a placement sweep and record the result.",
+    )
+}
+
+private fun androidSetupSteps(state: AppUiState): List<SetupStep> {
+    val signalScore = state.overview?.signal?.score
+    val mapSaved = state.settings.mapLatitude != null && state.settings.mapLongitude != null
+    val towerReady = state.settings.openCellIdKey.isNotBlank()
+    val g4arEnabled = state.settings.advancedMode == AdvancedMode.G4arUnlockLab
+    val steps = mutableListOf(
+        setupStep(
+            title = "Gateway login saved",
+            done = state.settings.passwordConfigured,
+            detail = "Save the admin password once so Wi-Fi, clients, reboot, and backup tools work without retyping it.",
+            action = "Open Settings, save the gateway admin password, then press Test.",
+            weight = 18,
+        ),
+        setupStep(
+            title = "Gateway API reachable",
+            done = state.overview?.reachable == true,
+            detail = "The phone must be on the gateway LAN/Wi-Fi. Most stock gateways use 192.168.12.1 and port 8080.",
+            action = "Join the gateway network and verify host and port in Settings.",
+            weight = 16,
+        ),
+        setupStep(
+            title = "Signal baseline captured",
+            done = signalScore != null,
+            detail = "A baseline lets you compare antenna direction, placement, bands, and tower changes.",
+            action = "Refresh the dashboard and record RSRP, RSRQ, SINR, band, PCI, and cell ID.",
+            weight = 14,
+            warn = signalScore != null && signalScore < 50,
+        ),
+        setupStep(
+            title = "Map center saved",
+            done = mapSaved,
+            detail = "A saved home location makes tower searches and serving-cell estimates much more useful.",
+            action = "Open Map, paste coordinates, then save the map center.",
+            weight = 12,
+        ),
+        setupStep(
+            title = "Tower lookup ready",
+            done = towerReady,
+            detail = "OpenCellID is optional, but it unlocks nearby tower records and serving-cell map matches.",
+            action = "Add an OpenCellID key in Map settings, then refresh towers.",
+            weight = 10,
+        ),
+        setupStep(
+            title = "LAN inventory loaded",
+            done = state.clients.isNotEmpty(),
+            detail = "Connected-device inventory helps catch unknown clients and identify which devices are stressing upload.",
+            action = "Open Devices and reload clients after saving the gateway login.",
+            weight = 9,
+            warn = state.settings.passwordConfigured && state.clients.isEmpty(),
+        ),
+        setupStep(
+            title = "Manual mode understood",
+            done = true,
+            detail = "The Android app only works while it is open. It does not run the Docker watchdog in the background.",
+            action = "Use the Docker app for 24/7 monitoring and automatic recovery.",
+            weight = 8,
+        ),
+    )
+    if (g4arEnabled) {
+        steps += setupStep(
+            title = "G4AR stock backup saved",
+            done = state.backups.isNotEmpty(),
+            detail = "Owned G4AR lab work needs a local stock backup before any adapter-driven firmware research.",
+            action = "Configure the local adapter URL, acknowledge the risk, then create a stock backup.",
+            weight = 13,
+            warn = state.settings.adapterUrl.isNotBlank() && state.backups.isEmpty(),
+        )
+    } else {
+        steps += SetupStep(
+            title = "G4AR lab disabled",
+            status = "optional",
+            tone = "muted",
+            detail = "Advanced firmware/radio work is optional and should stay disabled on stock or leased hardware.",
+            action = "Enable only for owner-controlled G4AR units with a recovery path.",
+            weight = 6,
+        )
+    }
+    return steps
+}
+
+private fun setupStep(
+    title: String,
+    done: Boolean,
+    detail: String,
+    action: String,
+    weight: Int,
+    warn: Boolean = false,
+): SetupStep {
+    return when {
+        done && warn -> SetupStep(title, "warn", "warn", detail, action, weight)
+        done -> SetupStep(title, "done", "good", detail, action, weight)
+        else -> SetupStep(title, "todo", "warn", detail, action, weight)
+    }
+}
+
+private fun androidSignalTips(state: AppUiState): List<SignalTip> {
+    val metrics = state.overview?.signal?.metrics.orEmpty().associateBy { it.key.lowercase() }
+    val sinr = metrics["sinr"]?.score
+    val rsrp = metrics["rsrp"]?.score
+    val rsrq = metrics["rsrq"]?.score
+    val band = mapValue(state.overview?.connection.orEmpty(), "Band", "band").lowercase()
+    val tips = mutableListOf<SignalTip>()
+
+    if (sinr == null && rsrp == null && rsrq == null) {
+        tips += SignalTip("Capture radio metrics", "Refresh after the gateway API responds. RSRP, RSRQ, SINR, band, PCI, and cell ID make every antenna move measurable.", "warn")
+    }
+    if (sinr != null && sinr < 70) {
+        tips += SignalTip("Prioritize SINR before bars", "Rotate the gateway or directional antenna in small steps and keep the position that improves SINR without crushing RSRP.", if (sinr >= 45) "warn" else "bad")
+    }
+    if (rsrp != null && rsrp < 60) {
+        tips += SignalTip("Improve received power", "Move the gateway higher, closer to an exterior wall/window, or aim the antenna at the best mapped cell.", if (rsrp >= 35) "warn" else "bad")
+    }
+    if (rsrq != null && rsrq < 55) {
+        tips += SignalTip("Watch congestion and reflections", "Weak RSRQ often means noisy or loaded air. Compare another band/tower before assuming the closest site is best.", "warn")
+    }
+    if ("n41" in band) {
+        tips += SignalTip("n41 detected", "n41 can be excellent for download. If upload or latency is weak, compare placement and LTE-anchor behavior on owned lab hardware.", "info")
+    }
+    if (state.towerMap.connectedTower != null) {
+        tips += SignalTip("Serving tower is mapped", "Use the map line as an aiming baseline, then run a sweep after each antenna or placement change.", "good")
+    }
+    tips += SignalTip("Run repeatable sweeps", "Change one thing at a time, wait for the gateway to settle, then compare signal, ping, loss, and connected cell.", "info")
+    return tips.take(6)
+}
+
+private fun androidPlaybookCards(state: AppUiState): List<PlaybookCard> {
+    val signalScore = state.overview?.signal?.score
+    return listOf(
+        PlaybookCard(
+            title = "Router offload mode",
+            tone = if (state.wifi?.radioEnabled == false) "good" else "info",
+            summary = if (state.wifi?.radioEnabled == false) {
+                "Gateway Wi-Fi radios are off. Your own router can own Wi-Fi, DNS, VLANs, and SQM."
+            } else {
+                "Use Devices to turn gateway Wi-Fi off when an external router handles the LAN."
+            },
+            actions = listOf(
+                "Put your router WAN behind the gateway LAN.",
+                "Run DHCP, DNS, VLANs, and Wi-Fi from the router.",
+                "Document double-NAT or port-forwarding limits for services.",
+            ),
+        ),
+        PlaybookCard(
+            title = "Upload and latency tuning",
+            tone = if (signalScore != null && signalScore < 50) "warn" else "info",
+            summary = "Use SQM/QoS on your own router to protect video calls, gaming, VPN, and remote access from upload bufferbloat.",
+            actions = listOf(
+                "Measure real upload at different times of day.",
+                "Set SQM uplink slightly below stable upload speed.",
+                "Retest ping under load after each change.",
+            ),
+        ),
+        PlaybookCard(
+            title = "Tower and antenna notebook",
+            tone = if (state.towerMap.nearby.isNotEmpty()) "good" else "info",
+            summary = "Track band, PCI, cell ID, SINR, RSRP, speed, and antenna direction so changes are repeatable.",
+            actions = listOf(
+                "Save the map center.",
+                "Refresh nearby towers.",
+                "Run sweeps after each antenna angle or gateway placement change.",
+            ),
+        ),
+        PlaybookCard(
+            title = "LAN inventory",
+            tone = if (state.clients.isNotEmpty()) "good" else "warn",
+            summary = "${state.clients.size} connected device${if (state.clients.size == 1) "" else "s"} loaded.",
+            actions = listOf(
+                "Reload clients after adding the gateway login.",
+                "Rename important devices in your router/DNS notes.",
+                "Watch for unknown clients before blaming the cellular link.",
+            ),
+        ),
+        PlaybookCard(
+            title = "Recovery discipline",
+            tone = "info",
+            summary = "Keep changes reversible: backup configs, record baselines, and avoid firmware work until recovery is proven.",
+            actions = listOf(
+                "Create a stock backup before G4AR lab work.",
+                "Keep notes with antenna placement and tower IDs.",
+                "Power the gateway and router from a UPS if possible.",
+            ),
+        ),
+    )
+}
+
+private fun adapterGuideSteps(): List<String> {
+    return listOf(
+        "Choose the device that will physically reach the modem or gateway lab hardware.",
+        "Install or build a trusted adapter service on that local device.",
+        "Bind it to the LAN only and confirm GET /health works from the phone.",
+        "Paste the base URL in Settings and create a stock backup before experiments.",
+    )
+}
+
+private fun mapValue(values: Map<String, String>, vararg keys: String): String {
+    for (key in keys) {
+        val match = values.entries.firstOrNull { it.key.equals(key, ignoreCase = true) }
+        if (match != null && match.value.isNotBlank()) {
+            return match.value
+        }
+    }
+    return ""
 }
 
 private fun towerMapHtml(data: TowerMapData): String {

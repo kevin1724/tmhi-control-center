@@ -12,7 +12,7 @@
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
     <link rel="manifest" href="/static/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260724-icons" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260724-homelab" />
   </head>
   <body>
     <div class="app-shell">
@@ -47,15 +47,22 @@
               <small>Towers nearby</small>
             </span>
           </button>
-          <button class="nav-item" type="button" data-view="diagnostics">
+          <button class="nav-item" type="button" data-view="homelab">
             <span class="nav-index">04</span>
+            <span>
+              <strong>Homelab</strong>
+              <small>Tune and backup</small>
+            </span>
+          </button>
+          <button class="nav-item" type="button" data-view="diagnostics">
+            <span class="nav-index">05</span>
             <span>
               <strong>Diagnostics</strong>
               <small>Probes and data</small>
             </span>
           </button>
           <button class="nav-item" type="button" data-view="settings">
-            <span class="nav-index">05</span>
+            <span class="nav-index">06</span>
             <span>
               <strong>Settings</strong>
               <small>Login and app</small>
@@ -147,6 +154,20 @@
                   <small>Last 24 hours</small>
                 </article>
               </div>
+            </section>
+
+            <section class="workspace-section setup-coach" aria-labelledby="dashboardCoachHeading">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Setup Coach</p>
+                  <h2 id="dashboardCoachHeading">Next Best Action</h2>
+                </div>
+                <span id="dashboardReadinessTag" class="tag tag--muted">Checking</span>
+              </div>
+              <p id="dashboardNextAction" class="coach-lead">
+                Refreshing setup recommendations.
+              </p>
+              <div id="dashboardSetupList" class="checklist checklist--compact"></div>
             </section>
 
             <div class="workspace-grid dashboard-grid">
@@ -323,6 +344,93 @@
                   <tbody id="clientTableBody"></tbody>
                 </table>
               </div>
+            </section>
+          </section>
+
+          <section
+            id="view-homelab"
+            class="app-view"
+            data-view-panel="homelab"
+            aria-labelledby="homelabHeading"
+          >
+            <div class="view-heading">
+              <div>
+                <p class="eyebrow">DIY Homelab</p>
+                <h2 id="homelabHeading">Tuning, Router Offload, and Lab Readiness</h2>
+              </div>
+              <span id="homelabReadinessTag" class="tag tag--muted">Checking</span>
+            </div>
+
+            <section class="workspace-section homelab-hero" aria-labelledby="readinessHeading">
+              <div>
+                <p class="eyebrow">Readiness</p>
+                <h3 id="readinessHeading"><span id="homelabScore">--</span> setup score</h3>
+                <p id="homelabSummary" class="coach-lead">Refresh the dashboard to build the tuning plan.</p>
+              </div>
+              <div class="snapshot-actions">
+                <button id="downloadSnapshotButton" class="button button--primary" type="button">
+                  Download Snapshot
+                </button>
+                <small>Redacted JSON for support notes, placement logs, and issue reports.</small>
+              </div>
+            </section>
+
+            <div class="workspace-grid homelab-grid">
+              <section class="workspace-section" aria-labelledby="setupPlanHeading">
+                <div class="section-heading">
+                  <div>
+                    <p class="eyebrow">Setup</p>
+                    <h3 id="setupPlanHeading">Readiness Checklist</h3>
+                  </div>
+                </div>
+                <div id="homelabSetupList" class="checklist"></div>
+              </section>
+
+              <section class="workspace-section" aria-labelledby="signalCoachHeading">
+                <div class="section-heading">
+                  <div>
+                    <p class="eyebrow">Radio</p>
+                    <h3 id="signalCoachHeading">Signal and Antenna Coach</h3>
+                  </div>
+                </div>
+                <div id="homelabSignalCoach" class="insight-list"></div>
+              </section>
+            </div>
+
+            <section class="workspace-section" aria-labelledby="playbookHeading">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Homelab Playbook</p>
+                  <h3 id="playbookHeading">Useful Workflows</h3>
+                </div>
+              </div>
+              <div id="homelabPlaybook" class="playbook-grid"></div>
+            </section>
+
+            <section class="workspace-section adapter-guide" aria-labelledby="adapterGuideHeading">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">G4AR Lab</p>
+                  <h3 id="adapterGuideHeading">Local Adapter URL</h3>
+                </div>
+                <span id="adapterGuideTag" class="tag tag--muted">Setup needed</span>
+              </div>
+              <p id="adapterGuideSummary" class="coach-lead">
+                A local adapter URL is a LAN-only service running on hardware you control.
+              </p>
+              <div class="adapter-guide-grid">
+                <div>
+                  <h4>How to get one</h4>
+                  <ol id="adapterHowToList" class="numbered-list"></ol>
+                </div>
+                <div>
+                  <h4>Example URLs</h4>
+                  <div id="adapterExampleList" class="code-chip-list"></div>
+                  <h4>Adapter endpoints</h4>
+                  <div id="adapterEndpointList" class="code-chip-list"></div>
+                </div>
+              </div>
+              <div id="adapterSafetyList" class="insight-list insight-list--compact"></div>
             </section>
           </section>
 
@@ -651,6 +759,21 @@
                     />
                   </label>
                 </div>
+                <div class="adapter-mini-guide">
+                  <strong>What is this URL?</strong>
+                  <p>
+                    The local adapter URL is not the stock gateway login page. It is a small
+                    LAN-only service you run on owned hardware, such as an OpenWrt/ROOTer
+                    router, Raspberry Pi, mini PC, or Linux box that can safely talk to the
+                    modem side of your lab setup.
+                  </p>
+                  <div class="code-chip-list">
+                    <code>http://router.local:8080</code>
+                    <code>http://192.168.1.2:8765</code>
+                    <code>GET /health</code>
+                    <code>POST /g4ar/firmware/backup</code>
+                  </div>
+                </div>
                 <label class="check-row">
                   <input id="advancedModemAcknowledge" type="checkbox" />
                   <span>I own this G4AR and accept the firmware override, LTE/NSA experiment, warranty, carrier-term, and RF compliance risk.</span>
@@ -765,6 +888,6 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-    <script src="/static/app.js?v=20260724-g4ar-guide" defer></script>
+    <script src="/static/app.js?v=20260724-homelab" defer></script>
   </body>
 </html>

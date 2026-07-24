@@ -307,6 +307,197 @@ summary:focus-visible {
   box-shadow: var(--shadow);
 }
 
+.setup-coach,
+.homelab-hero {
+  border-color: color-mix(in srgb, var(--teal) 24%, var(--line));
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--teal-soft) 58%, transparent),
+      var(--surface) 48%
+    );
+}
+
+.coach-lead {
+  max-width: 860px;
+  margin: 0 0 16px;
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 750;
+}
+
+.homelab-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 360px);
+  gap: 18px;
+  align-items: center;
+}
+
+.homelab-hero h3 {
+  margin: 0 0 8px;
+  font-size: 30px;
+  line-height: 1.12;
+}
+
+.snapshot-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.snapshot-actions small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.homelab-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.checklist,
+.insight-list {
+  display: grid;
+  gap: 10px;
+}
+
+.checklist--compact {
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+
+.check-item,
+.insight-card,
+.playbook-card,
+.adapter-mini-guide {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.check-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.check-status {
+  min-width: 72px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--surface);
+  font-size: 11px;
+  font-weight: 900;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.check-item strong,
+.insight-card strong,
+.playbook-card strong,
+.adapter-mini-guide strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.check-item p,
+.check-item small,
+.insight-card p,
+.playbook-card p,
+.adapter-mini-guide p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.check-item small {
+  display: block;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.check-item--good,
+.insight-card--good,
+.playbook-card--good {
+  border-left-color: var(--teal);
+}
+
+.check-item--warn,
+.insight-card--warn,
+.playbook-card--warn {
+  border-left-color: var(--amber);
+}
+
+.check-item--bad,
+.insight-card--bad,
+.playbook-card--bad {
+  border-left-color: var(--red);
+}
+
+.check-item--info,
+.insight-card--info,
+.playbook-card--info {
+  border-left-color: var(--blue);
+}
+
+.playbook-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.playbook-card ul {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--ink);
+}
+
+.adapter-guide-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.8fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.adapter-guide h4,
+.adapter-mini-guide h4 {
+  margin: 0 0 8px;
+}
+
+.numbered-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 22px;
+}
+
+.code-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 14px;
+}
+
+.code-chip-list code {
+  max-width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--surface);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.insight-list--compact {
+  margin-top: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
 .section-heading,
 .view-heading {
   display: flex;
@@ -753,6 +944,10 @@ summary:focus-visible {
 .warning-panel--danger {
   border-color: color-mix(in srgb, var(--red) 45%, var(--line));
   background: var(--red-soft);
+}
+
+.adapter-mini-guide {
+  margin-bottom: 14px;
 }
 
 .firmware-gate {
@@ -1284,7 +1479,7 @@ th {
   }
 
   .side-nav {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
   .nav-item {
@@ -1335,6 +1530,11 @@ th {
 
   .workspace-section {
     padding: 14px;
+  }
+
+  .homelab-hero,
+  .adapter-guide-grid {
+    grid-template-columns: 1fr;
   }
 
   .metric-grid {
@@ -1406,6 +1606,7 @@ th {
 
   .metric-grid,
   .mini-metric-grid,
+  .checklist--compact,
   .map-form-grid {
     grid-template-columns: 1fr;
   }

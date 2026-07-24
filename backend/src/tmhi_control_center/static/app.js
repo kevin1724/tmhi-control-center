@@ -20,6 +20,7 @@ const state = {
   mapBusy: false,
   actionBusy: false,
   gatewayLoginBusy: false,
+  snapshotBusy: false,
   seriesRunning: false,
   seriesAbort: false,
   maps: {
@@ -32,6 +33,12 @@ const state = {
 
 const ids = [
   "actionMessage",
+  "adapterEndpointList",
+  "adapterExampleList",
+  "adapterGuideSummary",
+  "adapterGuideTag",
+  "adapterHowToList",
+  "adapterSafetyList",
   "advancedModemAcknowledge",
   "advancedModemControlUrl",
   "advancedModemMode",
@@ -45,7 +52,11 @@ const ids = [
   "connectionDetails",
   "darkModeToggle",
   "dashboardMapPreview",
+  "dashboardNextAction",
+  "dashboardReadinessTag",
+  "dashboardSetupList",
   "deviceDetails",
+  "downloadSnapshotButton",
   "dryRunMetric",
   "dryRunToggle",
   "errorBanner",
@@ -72,6 +83,12 @@ const ids = [
   "gatewayReachTag",
   "gatewaySections",
   "gatewaySubtitle",
+  "homelabPlaybook",
+  "homelabReadinessTag",
+  "homelabScore",
+  "homelabSetupList",
+  "homelabSignalCoach",
+  "homelabSummary",
   "internetDetail",
   "internetMetric",
   "lastCheckMetric",
@@ -212,6 +229,7 @@ function bindControls() {
   els.saveAdvancedModemButton.addEventListener("click", saveAdvancedModemSettings);
   els.firmwareBackupButton.addEventListener("click", createG4ARFirmwareBackup);
   els.firmwareFlashButton.addEventListener("click", armG4ARFlashGate);
+  els.downloadSnapshotButton.addEventListener("click", downloadSnapshot);
   els.saveSettingsButton.addEventListener("click", saveSettings);
   els.rebootButton.addEventListener("click", requestReboot);
   els.seriesStartButton.addEventListener("click", startSweep);
@@ -372,6 +390,39 @@ async function refreshAll({ quiet = false } = {}) {
   updateControlState();
 }
 
+async function downloadSnapshot() {
+  if (state.snapshotBusy) {
+    return;
+  }
+
+  state.snapshotBusy = true;
+  updateControlState();
+  setActionMessage("Building redacted homelab snapshot.", "");
+  hideError();
+
+  try {
+    const snapshot = await api("/api/homelab/snapshot?include_nearby=false");
+    const serialized = JSON.stringify(snapshot, null, 2);
+    const blob = new Blob([serialized], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `tmhi-control-center-snapshot-${new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")}.json`;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    setActionMessage("Snapshot downloaded.", "success");
+  } catch (error) {
+    setActionMessage(error.message, "error");
+  } finally {
+    state.snapshotBusy = false;
+    updateControlState();
+  }
+}
+
 async function api(path, options = {}) {
   const init = {
     method: options.method || "GET",
@@ -416,6 +467,7 @@ function renderAll() {
   renderDetails();
   renderControls();
   renderClients();
+  renderHomelabInsights();
   renderTowerMapSummary();
   renderProbes();
   renderEvents();
@@ -498,6 +550,454 @@ function renderOverviewMetrics() {
   setTone(els.rebootMetric, status.reboot_count_24h ? "warn" : "muted");
 
   setTag(els.watchdogPhaseTag, phaseText(status.phase) || "Initializing", toneFromPhase(status.phase));
+}
+
+function renderHomelabInsights() {
+  const insights = buildUiInsights();
+  const readiness = insights.readiness;
+  const readinessLabel = `${readiness.score}% ${readiness.label}`;
+  const readinessTone = toneFromReadiness(readiness);
+
+  setTag(els.dashboardReadinessTag, readinessLabel, readinessTone);
+  setTag(els.homelabReadinessTag, readinessLabel, readinessTone);
+  setText(els.dashboardNextAction, readiness.next_best_action);
+  setText(els.homelabScore, `${readiness.score}%`);
+  setText(els.homelabSummary, readiness.summary);
+
+  renderChecklist(els.dashboardSetupList, insights.setup_steps.slice(0, 4), { compact: true });
+  renderChecklist(els.homelabSetupList, insights.setup_steps, { compact: false });
+  renderInsightList(els.homelabSignalCoach, insights.signal_coach);
+  renderPlaybook(els.homelabPlaybook, insights.homelab_cards);
+
+  const guide = insights.adapter_guide;
+  setTag(
+    els.adapterGuideTag,
+    guide.status === "ready" ? "Adapter configured" : "Setup needed",
+    guide.status === "ready" ? "good" : "warn"
+  );
+  setText(els.adapterGuideSummary, guide.summary);
+  renderOrderedList(els.adapterHowToList, guide.how_to_get_one);
+  renderCodeChips(els.adapterExampleList, guide.examples);
+  renderCodeChips(els.adapterEndpointList, guide.required_endpoints);
+  renderInsightList(
+    els.adapterSafetyList,
+    guide.safety.map((detail) => ({
+      title: "Safety check",
+      detail,
+      tone: "warn",
+    }))
+  );
+}
+
+function buildUiInsights() {
+  const setupSteps = buildSetupSteps();
+  return {
+    readiness: buildReadiness(setupSteps),
+    setup_steps: setupSteps,
+    signal_coach: buildSignalCoach(),
+    homelab_cards: buildHomelabCards(),
+    adapter_guide: buildAdapterGuide(),
+  };
+}
+
+function buildReadiness(setupSteps) {
+  const totalWeight = setupSteps.reduce((sum, step) => sum + step.weight, 0) || 1;
+  const earned = setupSteps
+    .filter((step) => step.status === "done" || step.status === "optional")
+    .reduce((sum, step) => sum + step.weight, 0);
+  const score = Math.round((earned / totalWeight) * 100);
+  const next = setupSteps.find((step) => step.status !== "done" && step.status !== "optional");
+  const signalScore = numericScore(state.overview?.signal?.score);
+  const online = state.status?.internet_online;
+  let label = "Needs setup";
+  if (score >= 85 && (!Number.isFinite(signalScore) || signalScore >= 70)) {
+    label = "Dialed in";
+  } else if (score >= 65) {
+    label = "Operational";
+  } else if (online === false) {
+    label = "Needs recovery";
+  }
+
+  let summary = "Start with gateway login, map center, and a baseline signal reading.";
+  if (online === false) {
+    summary = "Internet probes are failing. Check gateway reachability, then run a manual check before rebooting.";
+  } else if (Number.isFinite(signalScore) && signalScore < 50) {
+    summary = "Core setup is usable, but signal quality should be tuned before chasing firmware or tower changes.";
+  } else if (score >= 85) {
+    summary = "The key setup pieces are in place. Use sweeps and snapshots to tune placement over time.";
+  } else if (score >= 65) {
+    summary = "The control center is usable. Finish the remaining setup items to make troubleshooting easier.";
+  }
+
+  return {
+    score,
+    label,
+    summary,
+    next_best_action: next ? next.action : "Run a placement sweep and save the snapshot.",
+  };
+}
+
+function buildSetupSteps() {
+  const advanced = state.config?.advanced_modem || {};
+  const mapConfig = state.config?.map || {};
+  const detection = state.overview?.detection || {};
+  const provider = state.mapData?.provider || {};
+  const center = state.mapData?.map?.center || {};
+  const clients = state.clients?.devices || [];
+  const clientCount = state.clients?.count ?? clients.length;
+  const backupCount = Array.isArray(state.firmwareBackups?.backups)
+    ? state.firmwareBackups.backups.length
+    : 0;
+  const signalScore = numericScore(state.overview?.signal?.score);
+  const g4arEnabled = isG4ARLabMode(advanced.mode);
+
+  const steps = [
+    setupStep(
+      "gateway-login",
+      "Gateway login saved",
+      Boolean(state.config?.gateway_password_configured),
+      "Save the admin password once so Wi-Fi, clients, reboot, and backup tools work without retyping it.",
+      "Open Settings, save the gateway admin password, then press Test.",
+      18
+    ),
+    setupStep(
+      "gateway-api",
+      "Gateway API reachable",
+      detection.reachable === true || state.status?.gateway_reachable === true,
+      "The app needs the local gateway API, usually 192.168.12.1 on port 8080.",
+      "Join the gateway LAN/Wi-Fi and verify the gateway host and port in Settings.",
+      16
+    ),
+    setupStep(
+      "signal-baseline",
+      "Signal baseline captured",
+      Number.isFinite(signalScore),
+      "A baseline lets you compare antenna direction, placement, bands, and tower changes.",
+      "Refresh the dashboard and record RSRP, RSRQ, SINR, band, PCI, and cell ID.",
+      14,
+      { warn: Number.isFinite(signalScore) && signalScore < 50 }
+    ),
+    setupStep(
+      "map-center",
+      "Map center saved",
+      mapConfig.latitude !== null && mapConfig.latitude !== undefined && mapConfig.longitude !== null && mapConfig.longitude !== undefined,
+      "A saved home location makes tower searches and serving-cell estimates much more useful.",
+      "Open Map, use browser location or paste coordinates, then save the map center.",
+      12,
+      { warn: center.source === "public_ip" }
+    ),
+    setupStep(
+      "tower-provider",
+      "Tower lookup ready",
+      Boolean(provider.configured || mapConfig.opencellid_configured),
+      "OpenCellID is optional, but it unlocks nearby tower records and serving-cell map matches.",
+      "Add an OpenCellID key in Settings, then refresh towers on the Map page.",
+      10
+    ),
+    setupStep(
+      "lan-inventory",
+      "LAN inventory loaded",
+      clientCount > 0,
+      "Connected-device inventory helps catch unknown clients and identify which devices are stressing upload.",
+      "Open Devices and run Reverse Lookup after saving the gateway login.",
+      9,
+      { warn: Boolean(state.config?.gateway_password_configured) && clientCount === 0 }
+    ),
+    setupStep(
+      "watchdog-policy",
+      "Watchdog policy reviewed",
+      Boolean(state.status?.dry_run) || Boolean(state.config?.gateway_password_configured),
+      "Dry Run keeps reboot automation safe until the gateway login and recovery behavior have been tested.",
+      "Keep Dry Run on until manual checks and reboot recovery look predictable.",
+      8
+    ),
+  ];
+
+  if (g4arEnabled) {
+    steps.push(
+      setupStep(
+        "g4ar-backup",
+        "G4AR stock backup saved",
+        backupCount > 0,
+        "Owned G4AR lab work needs a local stock backup before any adapter-driven firmware research.",
+        "Configure the local adapter URL, acknowledge the risk, then create a stock backup.",
+        13,
+        { warn: Boolean(advanced.control_url_configured) && backupCount === 0 }
+      )
+    );
+  } else {
+    steps.push({
+      id: "g4ar-lab",
+      title: "G4AR lab disabled",
+      status: "optional",
+      tone: "muted",
+      detail: "Advanced firmware/radio work is optional and should stay disabled on stock or leased hardware.",
+      action: "Enable only for owner-controlled G4AR units with a recovery path.",
+      weight: 6,
+    });
+  }
+
+  return steps;
+}
+
+function setupStep(id, title, done, detail, action, weight, { warn = false } = {}) {
+  let status = "todo";
+  let tone = "warn";
+  if (done && warn) {
+    status = "warn";
+    tone = "warn";
+  } else if (done) {
+    status = "done";
+    tone = "good";
+  }
+  return { id, title, status, tone, detail, action, weight };
+}
+
+function buildSignalCoach() {
+  const signal = state.overview?.signal || {};
+  const connection = state.overview?.connection || {};
+  const metrics = Array.isArray(signal.metrics) ? signal.metrics : [];
+  const byKey = Object.fromEntries(metrics.map((metric) => [String(metric.key || "").toLowerCase(), metric]));
+  const tips = [];
+  const sinr = numericScore(byKey.sinr?.score);
+  const rsrp = numericScore(byKey.rsrp?.score);
+  const rsrq = numericScore(byKey.rsrq?.score);
+  const band = String(connection.band || "").toLowerCase();
+
+  if (!Number.isFinite(sinr) && !Number.isFinite(rsrp) && !Number.isFinite(rsrq)) {
+    tips.push(tip("Capture radio metrics", "Refresh after the gateway API responds. RSRP, RSRQ, SINR, band, PCI, and cell ID make every antenna move measurable.", "warn"));
+  }
+  if (Number.isFinite(sinr) && sinr < 70) {
+    tips.push(tip("Prioritize SINR before bars", "Rotate the gateway or directional antenna in small steps and keep the position that improves SINR without crushing RSRP.", sinr >= 45 ? "warn" : "bad"));
+  }
+  if (Number.isFinite(rsrp) && rsrp < 60) {
+    tips.push(tip("Improve received power", "Move the gateway higher, closer to an exterior wall/window, or aim the antenna at the best mapped cell.", rsrp >= 35 ? "warn" : "bad"));
+  }
+  if (Number.isFinite(rsrq) && rsrq < 55) {
+    tips.push(tip("Watch congestion and reflections", "Weak RSRQ often means noisy or loaded air. Compare another band/tower before assuming the closest site is best.", "warn"));
+  }
+  if (band.includes("n41")) {
+    tips.push(tip("n41 detected", "n41 can be excellent for download. If upload or latency is weak, compare placement and LTE-anchor behavior on owned lab hardware.", "info"));
+  }
+  if (state.mapData?.connected?.location) {
+    tips.push(tip("Serving tower is mapped", "Use the map line as an aiming baseline, then run a sweep after each antenna or placement change.", "good"));
+  }
+  tips.push(tip("Run repeatable sweeps", "Change one thing at a time, wait for the gateway to settle, then compare signal, ping, loss, and connected cell.", "info"));
+  return tips.slice(0, 6);
+}
+
+function buildHomelabCards() {
+  const clients = state.clients?.devices || [];
+  const clientCount = state.clients?.count ?? clients.length;
+  const signalScore = numericScore(state.overview?.signal?.score);
+  const radioEnabled = state.wifi?.radio_enabled;
+  const provider = state.mapData?.provider || {};
+  return [
+    {
+      title: "Router offload mode",
+      tone: radioEnabled === false ? "good" : "info",
+      summary:
+        radioEnabled === false
+          ? "Gateway Wi-Fi radios are off. Your own router can own Wi-Fi, DNS, VLANs, and SQM."
+          : "Use Devices to turn gateway Wi-Fi off when an external router handles the LAN.",
+      actions: [
+        "Put your router WAN behind the gateway LAN.",
+        "Run DHCP, DNS, VLANs, and Wi-Fi from the router.",
+        "Document double-NAT or port-forwarding limits for services.",
+      ],
+    },
+    {
+      title: "Upload and latency tuning",
+      tone: Number.isFinite(signalScore) && signalScore < 50 ? "warn" : "info",
+      summary: "Use SQM/QoS on your own router to protect video calls, gaming, VPN, and remote access from upload bufferbloat.",
+      actions: [
+        "Measure real upload at different times of day.",
+        "Set SQM uplink slightly below stable upload speed.",
+        "Retest ping under load after each change.",
+      ],
+    },
+    {
+      title: "Tower and antenna notebook",
+      tone: provider.nearby_loaded ? "good" : "info",
+      summary: "Track band, PCI, cell ID, SINR, RSRP, speed, and antenna direction so changes are repeatable.",
+      actions: [
+        "Save the map center.",
+        "Refresh nearby towers.",
+        "Run sweeps after each antenna angle or gateway placement change.",
+      ],
+    },
+    {
+      title: "LAN inventory",
+      tone: clientCount ? "good" : "warn",
+      summary: `${clientCount} connected device${clientCount === 1 ? "" : "s"} loaded.`,
+      actions: [
+        "Run reverse lookup after adding the gateway login.",
+        "Rename important devices in your router/DNS notes.",
+        "Watch for unknown clients before blaming the cellular link.",
+      ],
+    },
+    {
+      title: "Recovery discipline",
+      tone: state.status?.dry_run ? "warn" : "good",
+      summary: "Keep changes reversible: backup configs, export snapshots, and avoid live reboot automation until recovery is proven.",
+      actions: [
+        "Download a snapshot before lab changes.",
+        "Keep Dry Run on during first setup.",
+        "Power the gateway and router from a UPS if possible.",
+      ],
+    },
+    {
+      title: "Event context",
+      tone: "info",
+      summary: `${state.events.length} recent event${state.events.length === 1 ? "" : "s"} in the local log.`,
+      actions: [
+        "Compare outages with weather, load, tower changes, and router logs.",
+        "Keep snapshots with antenna placement notes.",
+      ],
+    },
+  ];
+}
+
+function buildAdapterGuide() {
+  const advanced = state.config?.advanced_modem || {};
+  const adapterReady = Boolean(advanced.enabled && advanced.control_url_configured);
+  return {
+    status: adapterReady ? "ready" : "setup_needed",
+    summary:
+      "A local adapter URL is the address of a small HTTP service running on hardware you control. It is not the stock gateway address and it is not a firmware download site.",
+    how_to_get_one: [
+      "Choose the device that will physically reach the modem or gateway lab hardware.",
+      "Install or build a trusted adapter service on that local device.",
+      "Bind it to the LAN only, confirm its health endpoint, then paste its base URL here.",
+      "Create a stock backup before any firmware or radio-profile experiment.",
+    ],
+    examples: [
+      "http://router.local:8080",
+      "http://192.168.1.2:8765",
+      "http://rooter.lan:8080",
+    ],
+    required_endpoints: [
+      "GET /health",
+      "POST /g4ar/firmware/backup",
+      "POST /modem/radio/profile",
+      "POST /modem/cell/scan",
+      "POST /modem/lock",
+    ],
+    safety: [
+      "Do not expose the adapter to the public internet.",
+      "Do not paste random firmware URLs into the adapter.",
+      "Do not continue without a stock backup, SHA-256 hashes, and a tested recovery path.",
+      "Transmit-power override is intentionally unsupported.",
+    ],
+  };
+}
+
+function renderChecklist(container, steps, { compact }) {
+  replaceChildren(container);
+  if (!steps.length) {
+    container.append(emptyNode("No setup items are available yet."));
+    return;
+  }
+  for (const step of steps) {
+    const item = document.createElement("article");
+    item.className = `check-item check-item--${step.tone || "muted"}`;
+
+    const status = document.createElement("span");
+    status.className = "check-status";
+    status.textContent = step.status === "todo" ? "Next" : humanize(step.status);
+
+    const body = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = step.title;
+    const detail = document.createElement("p");
+    detail.textContent = step.detail;
+    body.append(title, detail);
+    if (!compact || step.status !== "done") {
+      const action = document.createElement("small");
+      action.textContent = step.action;
+      body.append(action);
+    }
+
+    item.append(status, body);
+    container.append(item);
+  }
+}
+
+function renderInsightList(container, insights) {
+  replaceChildren(container);
+  if (!insights.length) {
+    container.append(emptyNode("No recommendations yet."));
+    return;
+  }
+  for (const insight of insights) {
+    const item = document.createElement("article");
+    item.className = `insight-card insight-card--${insight.tone || "info"}`;
+    const title = document.createElement("strong");
+    title.textContent = insight.title;
+    const detail = document.createElement("p");
+    detail.textContent = insight.detail;
+    item.append(title, detail);
+    container.append(item);
+  }
+}
+
+function renderPlaybook(container, cards) {
+  replaceChildren(container);
+  if (!cards.length) {
+    container.append(emptyNode("No playbook items yet."));
+    return;
+  }
+  for (const card of cards) {
+    const item = document.createElement("article");
+    item.className = `playbook-card playbook-card--${card.tone || "info"}`;
+    const title = document.createElement("strong");
+    title.textContent = card.title;
+    const summary = document.createElement("p");
+    summary.textContent = card.summary;
+    const list = document.createElement("ul");
+    for (const action of card.actions || []) {
+      const row = document.createElement("li");
+      row.textContent = action;
+      list.append(row);
+    }
+    item.append(title, summary, list);
+    container.append(item);
+  }
+}
+
+function renderOrderedList(container, values) {
+  replaceChildren(container);
+  for (const value of values || []) {
+    const item = document.createElement("li");
+    item.textContent = value;
+    container.append(item);
+  }
+}
+
+function renderCodeChips(container, values) {
+  replaceChildren(container);
+  for (const value of values || []) {
+    const chip = document.createElement("code");
+    chip.textContent = value;
+    container.append(chip);
+  }
+}
+
+function tip(title, detail, tone) {
+  return { title, detail, tone };
+}
+
+function toneFromReadiness(readiness) {
+  if (readiness.label === "Dialed in") {
+    return "good";
+  }
+  if (readiness.label === "Operational") {
+    return "info";
+  }
+  if (readiness.label === "Needs recovery") {
+    return "bad";
+  }
+  return "warn";
 }
 
 function renderSignal() {
@@ -1845,6 +2345,7 @@ function updateControlState() {
     state.actionBusy ||
     state.mapBusy ||
     state.gatewayLoginBusy ||
+    state.snapshotBusy ||
     state.seriesRunning;
   const hasPassword = Boolean(els.gatewayPassword.value);
   const configured = Boolean(state.config?.gateway_password_configured);
@@ -1877,6 +2378,7 @@ function updateControlState() {
   els.forgetGatewayButton.disabled = busy || !configured;
   els.saveWifiButton.disabled = busy || !configured || !els.wifiSsid.value.trim();
   els.saveSettingsButton.disabled = busy;
+  els.downloadSnapshotButton.disabled = busy;
   els.saveAdvancedModemButton.disabled =
     busy || (advancedEnabled && !els.advancedModemAcknowledge.checked);
   els.rebootButton.disabled = busy || (!configured && !state.config?.dry_run);
@@ -2072,6 +2574,17 @@ function hasValue(value) {
     return Boolean(value.trim());
   }
   return true;
+}
+
+function numericScore(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const number = Number.parseFloat(value.replace("%", ""));
+    return Number.isFinite(number) ? number : NaN;
+  }
+  return NaN;
 }
 
 function formatValue(value) {

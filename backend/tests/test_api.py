@@ -10,6 +10,7 @@ def load_main(monkeypatch, tmp_path):
     monkeypatch.setenv("WATCHDOG_ENABLED", "false")
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "control-center.db"))
     monkeypatch.setenv("WATCHDOG_ENV_PATH", str(tmp_path / "control-center.env"))
+    monkeypatch.setenv("FIRMWARE_BACKUP_DIR", str(tmp_path / "firmware-backups"))
     monkeypatch.delenv("GATEWAY_PASSWORD", raising=False)
     monkeypatch.delenv("GATEWAY_PASSWORD_FILE", raising=False)
     monkeypatch.delenv("OPENCELLID_API_KEY", raising=False)
@@ -117,6 +118,77 @@ def test_gateway_clients_endpoint(monkeypatch, tmp_path) -> None:
     assert response.status_code == 200
     assert response.json()["count"] == 1
     assert response.json()["online_vendor_lookup"] is True
+
+
+def test_homelab_snapshot_includes_readiness_and_adapter_guide(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    main = load_main(monkeypatch, tmp_path)
+
+    class FakeWatchdog:
+        async def stop(self) -> None:
+            pass
+
+        async def status_snapshot(self):
+            return {
+                "internet_online": True,
+                "gateway_reachable": True,
+                "dry_run": True,
+                "watchdog_enabled": True,
+            }
+
+    class FakeGateway:
+        async def overview(self):
+            return {
+                "observed_at": "2026-07-24T00:00:00+00:00",
+                "detection": {"reachable": True, "api_type": "unified"},
+                "signal": {
+                    "score": 82,
+                    "quality": "Good",
+                    "metrics": [
+                        {"key": "sinr", "label": "SINR", "score": 80, "value": "18 dB"},
+                    ],
+                },
+                "device": {"model": "TMO-G4AR"},
+                "connection": {
+                    "network_type": "5G",
+                    "band": "n41",
+                    "cell_id": "1841925",
+                },
+                "wifi": {},
+                "sections": [],
+            }
+
+        async def wifi_config(self):
+            return {"ssid": "HomeLab", "radio_enabled": False}
+
+        async def connected_devices(self, *, online_vendor_lookup: bool = False):
+            return {
+                "count": 1,
+                "devices": [{"hostname": "nas", "ip_address": "192.168.12.20"}],
+            }
+
+        async def close(self) -> None:
+            pass
+
+    with TestClient(main.app) as client:
+        original_gateway = main.gateway
+        original_watchdog = main.watchdog
+        main.gateway = FakeGateway()
+        main.watchdog = FakeWatchdog()
+        try:
+            response = client.get("/api/homelab/snapshot")
+        finally:
+            main.gateway = original_gateway
+            main.watchdog = original_watchdog
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["insights"]["readiness"]["score"] > 50
+    assert payload["insights"]["adapter_guide"]["examples"][0].startswith("http://")
+    assert payload["config"]["gateway_password_configured"] is False
+    assert payload["clients"]["count"] == 1
 
 
 def test_gateway_map_endpoint_reports_tower_identity(monkeypatch, tmp_path) -> None:
