@@ -556,7 +556,7 @@ private fun MetricCard(label: String, value: String) {
 }
 
 @Composable
-private fun SectionCard(title: String, content: @Composable Column.() -> Unit) {
+private fun SectionCard(title: String, content: @Composable () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
