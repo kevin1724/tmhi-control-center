@@ -129,14 +129,14 @@ summary:focus-visible {
 }
 
 .brand-mark {
-  width: 42px;
-  height: 42px;
-  display: grid;
-  place-items: center;
-  border-radius: 8px;
-  color: #ffffff;
-  background: var(--magenta);
-  font-weight: 900;
+  width: 46px;
+  height: 46px;
+  display: block;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: #111722;
+  object-fit: cover;
 }
 
 .brand-panel strong {
