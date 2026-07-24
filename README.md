@@ -1,91 +1,214 @@
 # TMHI Control Center
 
-A fresh control-center scaffold for T-Mobile Home Internet gateway management.
+TMHI Control Center is a self-hosted dashboard and control app for T-Mobile Home
+Internet gateways. It is designed for users who want clearer gateway status,
+signal visibility, connected-device information, tower mapping, Wi-Fi controls,
+and safer advanced-lab workflows for owner-controlled hardware.
 
-This repo keeps the working backend pieces from the earlier TMHI backend project,
-but it is no longer wired to that original GitHub or container image. The GitHub
-Actions workflow now builds and publishes this project as its own Docker image.
+The app runs locally in Docker and opens in a web browser. It keeps settings and
+event history in a local `/data` volume, so gateway credentials and lab settings
+stay on the user's own system.
 
-## Current Scope
+> TMHI Control Center is an unofficial community project. It is not affiliated
+> with, endorsed by, or supported by T-Mobile.
 
-- FastAPI backend and built-in browser dashboard
-- Gateway overview API for device, cellular signal, network, Wi-Fi, and redacted
-  advanced gateway data
-- Wi-Fi SSID/radio controls and connected-device discovery with best-effort
-  device identification
-- G4AR Unlock / Radio Lab settings for owned secondhand gateways, with safety
-  gates for adapter-based LTE/NSA, band/cell, backup, and firmware workflows
-- Gateway reachability, login testing, and reboot request support
-- Connectivity probes and reboot safety logic from the previous project
-- SQLite event history
-- Dockerfile and source-build Docker Compose setup
-- Clean backend package layout under `backend/src/tmhi_control_center/`
+## What It Does
 
-## Guides
+- Shows live gateway health, internet status, cellular connection details, and
+  signal quality.
+- Displays useful gateway data such as model, firmware, uptime, WAN info,
+  cellular band, PCI, TAC/LAC, cell ID, and radio state when available.
+- Lists connected LAN/Wi-Fi devices with best-effort vendor and device guesses.
+- Provides Wi-Fi controls for SSID changes and gateway Wi-Fi radio toggling when
+  supported by the gateway API.
+- Maps the connected serving cell and nearby towers using Leaflet,
+  OpenStreetMap, and optional OpenCellID data.
+- Uses public-IP location estimates or saved map coordinates to help center
+  tower searches.
+- Runs connectivity probes and records events for troubleshooting outages.
+- Includes reboot safeguards from the original watchdog workflow.
+- Includes a G4AR Unlock / Radio Lab for owned Arcadyan TMO-G4AR gateways, with
+  explicit warnings, backup requirements, adapter-based controls, and consent
+  gates.
 
-- [G4AR Firmware Lab Guide](docs/G4AR_FIRMWARE_LAB_GUIDE.md) - setup,
-  stock-backup workflow, recovery checklist, and LTE/NSA testing guide.
+## Who It Is For
 
-## Project Layout
+This app is useful for:
 
-```text
-tmhi-control-center/
-+-- backend/
-|   +-- src/
-|   |   +-- tmhi_control_center/
-|   |       +-- static/
-|   |       +-- main.py
-|   |       +-- gateway.py
-|   |       +-- watchdog.py
-|   |       +-- connectivity.py
-|   |       +-- config.py
-|   |       +-- credentials.py
-|   |       +-- storage.py
-|   |       +-- models.py
-|   |       +-- cli.py
-|   +-- tests/
-|   +-- pyproject.toml
-|   +-- requirements.txt
-|   +-- requirements-dev.txt
-+-- android/
-+-- web/
-+-- deploy/
-+-- docs/
-+-- .github/
-+-- .env.example
-+-- .gitignore
-+-- Dockerfile
-+-- docker-compose.yml
-+-- LICENSE
-+-- README.md
-+-- SECURITY.md
-+-- CONTRIBUTING.md
-+-- CHANGELOG.md
-+-- ACKNOWLEDGEMENTS.md
-```
+- Home Internet users who want a cleaner dashboard than the stock gateway UI.
+- Users troubleshooting signal, tower, antenna, or placement issues.
+- Users who want local logs and connectivity checks for unstable service.
+- Advanced users working with owned secondhand G4AR units and external router or
+  modem-lab setups.
 
-The Python app now lives under `backend/`; the root is reserved for orchestration,
-docs, Android, and future standalone web work.
+This app is not a magic signal booster. It does not increase cellular transmit
+power, bypass carrier network rules, or guarantee tower locking on stock
+firmware.
 
-## Run Locally With Docker
+## Current Status
+
+TMHI Control Center is under active development. The web dashboard and backend
+are usable today, but some gateway features depend on the model, firmware, and
+what the local gateway API exposes.
+
+Planned project areas:
+
+- Android APK companion app.
+- Standalone web frontend package.
+- Additional gateway adapters.
+- Safer local adapter tooling for owner-controlled modem labs.
+
+## Quick Start With Docker
+
+Use the published Docker image:
 
 ```bash
-docker compose up -d --build
-docker compose logs -f tmhi-control-center
+docker run -d \
+  --name tmhi-control-center \
+  --restart unless-stopped \
+  -p 8095:8000 \
+  -v tmhi_control_center_data:/data \
+  kevina1724/tmhi-control-center:latest
 ```
 
-Open:
+Open the dashboard:
 
 ```text
 http://localhost:8095/
 ```
 
-From another device on your LAN, use the Docker host's LAN IP instead of
-`localhost`.
+From another device on the same LAN, replace `localhost` with the Docker host's
+LAN IP address.
+
+## Run From Source
+
+Clone the repo and build locally:
+
+```bash
+git clone https://github.com/kevin1724/tmhi-control-center.git
+cd tmhi-control-center
+docker compose up -d --build
+docker compose logs -f tmhi-control-center
+```
+
+The included `docker-compose.yml` builds the image from source and maps the
+dashboard to port `8095` by default. Change `WEB_PORT` in your environment if
+another service already uses that port.
+
+## First-Time Setup
+
+1. Open `http://localhost:8095/`.
+2. Go to `Settings`.
+3. Save the gateway admin password.
+4. Click `Test` to confirm the app can reach the gateway.
+5. Go to `Dashboard` and click `Refresh`.
+6. Optional: add an OpenCellID API key under `Tower Data` for nearby tower
+   lookups.
+7. Optional: save a map center or use browser location so tower searches start
+   near the gateway.
+
+Most T-Mobile Home Internet gateways use:
+
+```text
+Gateway host: 192.168.12.1
+Gateway API port: 8080
+Username: admin
+```
+
+Some models expose the API differently. The app tries common same-host gateway
+API variants when possible.
+
+## Configuration
+
+The app creates and updates a managed settings file inside the Docker data
+volume:
+
+```text
+/data/control-center.env
+```
+
+Common settings:
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `WEB_PORT` | `8095` | Host port used by Docker Compose |
+| `GATEWAY_HOST` | `192.168.12.1` | Gateway LAN IP |
+| `GATEWAY_PORT` | `8080` | Gateway local API port |
+| `GATEWAY_USERNAME` | `admin` | Gateway API username |
+| `MAP_RADIUS_KM` | `0.8` | Tower search radius |
+| `PUBLIC_IP_LOCATION_ENABLED` | `true` | Use public IP as a rough map fallback |
+| `OPENCELLID_API_KEY` | empty | Optional tower lookup key |
+| `FIRMWARE_BACKUP_DIR` | `/data/firmware-backups` | Local G4AR backup storage |
+| `DRY_RUN` | `true` | Prevent automatic reboot actions while testing |
+
+See [.env.example](.env.example) for the full reference.
+
+## Dashboard Pages
+
+`Dashboard` gives a live overview of internet status, gateway status, signal
+quality, cellular details, and quick actions.
+
+`Devices` shows Wi-Fi configuration and connected LAN/Wi-Fi clients.
+
+`Map` shows the serving cell, gateway/map center, nearby OpenCellID results, and
+important notes about tower locking limitations.
+
+`Diagnostics` shows connectivity probes, event history, raw gateway sections,
+and repeated probe sweeps.
+
+`Settings` stores gateway login, theme preference, tower data settings, watchdog
+settings, and advanced G4AR lab settings.
+
+## G4AR Unlock / Radio Lab
+
+The G4AR Unlock / Radio Lab is for owner-controlled Arcadyan TMO-G4AR gateways,
+such as secondhand units purchased outside of a carrier lease. It exists to make
+advanced work safer and more organized, not to hide risk.
+
+Use the lab for:
+
+- Recording a local adapter URL.
+- Creating and listing stock firmware backups through a trusted local adapter.
+- Saving SHA-256 hashes for backup and firmware artifacts.
+- Tracking LTE anchor / 5G NSA, LTE-only, 5G SA, and scan-only profile intent.
+- Keeping firmware override work locked behind backup, recovery, hash, and
+  consent requirements.
+
+Read the guide before enabling this mode:
+
+- [G4AR Firmware Lab Guide](docs/G4AR_FIRMWARE_LAB_GUIDE.md)
+
+Important limitations:
+
+- The app does not provide firmware downloads.
+- The app does not write firmware by itself.
+- The app does not provide transmit-power override controls.
+- Stock gateway firmware may not expose tower locking or LTE/NSA controls.
+- Any custom firmware, modem commands, or external antenna modifications can
+  brick hardware, void warranty, break service terms, or create RF compliance
+  problems.
+
+## Tower Data
+
+The map uses Leaflet and OpenStreetMap tiles for display. Nearby tower searches
+use OpenCellID when an API key is configured.
+
+The app may estimate the map center using public IP location if no saved map
+center is available. Public-IP location is approximate and may point to the ISP
+or carrier exit location instead of the real gateway location. For best results,
+save the gateway's actual latitude and longitude in `Map Center`.
+
+## Watchdog Behavior
+
+The watchdog checks internet connectivity with multiple probes and records the
+results. Reboot actions are guarded by grace periods, cooldowns, daily reboot
+limits, and `DRY_RUN`.
+
+Keep `DRY_RUN=true` until gateway login and reboot behavior have been tested.
 
 ## Diagnostic Commands
 
-Inside the container:
+Run these inside the container:
 
 ```bash
 docker compose exec tmhi-control-center \
@@ -93,52 +216,6 @@ docker compose exec tmhi-control-center \
 
 docker compose exec tmhi-control-center \
   python -m tmhi_control_center.cli gateway-test
-```
-
-## GitHub Setup
-
-The repo includes an active GitHub Actions workflow at
-`.github/workflows/docker-publish.yml`.
-
-On pull requests, it runs backend tests and verifies the Docker image builds. On
-pushes to `main`, version tags like `v0.1.1`, or manual runs, it builds and
-publishes a multi-architecture Docker Hub image.
-
-The GitHub repository is:
-
-```text
-https://github.com/kevin1724/tmhi-control-center
-```
-
-## Docker Hub Publishing
-
-Create a Docker Hub repository named:
-
-```text
-tmhi-control-center
-```
-
-Then configure the GitHub repository with:
-
-- Actions variable: `DOCKERHUB_USERNAME`
-- Actions secret: `DOCKERHUB_TOKEN`
-
-From PowerShell, set the repository variable:
-
-```powershell
-gh variable set DOCKERHUB_USERNAME --repo kevin1724/tmhi-control-center --body kevina1724
-```
-
-Then set the repository secret. Paste your Docker Hub access token when prompted:
-
-```powershell
-gh secret set DOCKERHUB_TOKEN --repo kevin1724/tmhi-control-center
-```
-
-The workflow publishes to:
-
-```text
-YOUR_DOCKERHUB_USERNAME/tmhi-control-center
 ```
 
 ## Development
@@ -160,47 +237,49 @@ export WATCHDOG_ENABLED=false
 uvicorn tmhi_control_center.main:app --host 0.0.0.0 --port 8095
 ```
 
-## App Icon
+## Docker Publishing
 
-The copied favicon, Apple touch icon, web manifest, and PNG app icons were
-removed. Add new branded assets later when the replacement app identity is ready.
+GitHub Actions builds and publishes the Docker image on pushes to `main`, version
+tags, and manual workflow runs.
 
-## G4AR Unlock / Radio Lab
+Published image:
 
-G4AR Unlock / Radio Lab is for owner-controlled Arcadyan TMO-G4AR gateways,
-such as secondhand eBay or Amazon units. The goal is to support research around
-stock backup, recovery, firmware override, and radio-mode experiments like
-restoring or preferring LTE anchor / 5G NSA when that performs better than pure
-5G Standalone.
+```text
+kevina1724/tmhi-control-center:latest
+```
 
-Start with the [G4AR Firmware Lab Guide](docs/G4AR_FIRMWARE_LAB_GUIDE.md) before
-enabling this mode.
+Repository settings required for publishing:
 
-The app intentionally does not provide transmit-power override controls. Upload
-and download improvements should come from antenna aiming, tower comparison,
-supported LTE/NSA or band/cell profiles, SQM/QoS, and repeated speed/latency
-tests.
+- Actions variable: `DOCKERHUB_USERNAME`
+- Actions secret: `DOCKERHUB_TOKEN`
 
-For upload preference, the project uses an adapter-facing QoS/SQM profile. That
-means shaping and prioritizing traffic so upload stays responsive under load; it
-does not increase cellular transmit power.
+## Project Layout
 
-Firmware override is guarded by stock backup, calibration/identity backup,
-SHA-256 hashes, verified recovery path, and exact typed consent before any future
-local adapter is allowed to attempt a flash. The current app validates the
-safety gate but does not write firmware.
+```text
+tmhi-control-center/
++-- backend/                  FastAPI app, gateway clients, tests, static UI
++-- android/                  Android APK source placeholder
++-- web/                      Future standalone web app placeholder
++-- deploy/                   Optional deployment examples
++-- docs/                     User and developer documentation
++-- .github/                  GitHub Actions workflows and templates
++-- Dockerfile                Production container image
++-- docker-compose.yml        Source-build local deployment
++-- README.md
+```
 
-T-Mobile publishes G4AR firmware history but not public firmware image
-downloads. The app therefore focuses on creating a local stock backup from the
-user's own gateway through a trusted adapter. In G4AR Unlock / Radio Lab mode,
-the Settings page can request `POST /g4ar/firmware/backup` from the configured
-adapter and saves the returned manifest/artifacts under `FIRMWARE_BACKUP_DIR`
-(`/data/firmware-backups` by default). Adapter-returned inline artifacts must
-include base64 content and, when provided, matching SHA-256 hashes.
+The backend uses a `src/` layout under `backend/src/tmhi_control_center/`.
 
-## Disclaimer
+## Security And Safety
 
-TMHI Control Center is an unofficial community project and is not affiliated with,
-endorsed by, or supported by T-Mobile. Custom firmware, modem commands, and
-external antenna modifications may void warranty, brick hardware, break carrier
-terms, or create RF compliance problems.
+- Keep the dashboard on a trusted LAN.
+- Do not expose the app directly to the public internet.
+- Store gateway credentials only on systems you control.
+- Keep backups of `/data` if using advanced lab features.
+- Do not use unverified firmware images.
+- Do not continue with custom firmware work unless a stock backup and recovery
+  path have both been verified.
+
+## License
+
+See [LICENSE](LICENSE).
