@@ -141,6 +141,7 @@ class AdvancedModemSettingsUpdateRequest(BaseModel):
         "nr_sa",
         "scan_only",
     ] = "auto"
+    skip_stock_backup: bool = False
 
 
 class G4ARFirmwareFlashRequest(BaseModel):
@@ -461,6 +462,10 @@ async def update_advanced_modem_settings(
         )
         managed_env.set_value("ADVANCED_UPLOAD_PROFILE", request.upload_profile)
         managed_env.set_value("ADVANCED_RADIO_PROFILE", request.radio_profile)
+        managed_env.set_value(
+            "ADVANCED_SKIP_STOCK_BACKUP",
+            str(request.mode != "disabled" and request.skip_stock_backup).lower(),
+        )
     except OSError as exc:
         raise HTTPException(
             status_code=500,
@@ -472,6 +477,9 @@ async def update_advanced_modem_settings(
     settings.advanced_modem_acknowledged = request.mode != "disabled" and request.acknowledged
     settings.advanced_upload_profile = request.upload_profile
     settings.advanced_radio_profile = request.radio_profile
+    settings.advanced_skip_stock_backup = (
+        request.mode != "disabled" and request.skip_stock_backup
+    )
 
     await store.record(
         "advanced_modem_settings_updated",
@@ -482,6 +490,7 @@ async def update_advanced_modem_settings(
             "acknowledged": settings.advanced_modem_acknowledged,
             "upload_profile": settings.advanced_upload_profile,
             "radio_profile": settings.advanced_radio_profile,
+            "skip_stock_backup": settings.advanced_skip_stock_backup,
         },
     )
     return settings.safe_summary()

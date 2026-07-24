@@ -214,11 +214,13 @@ fun AppSettings.withAdvanced(
     adapterUrl: String,
     radioProfile: RadioProfile,
     acknowledged: Boolean,
+    skipStockBackup: Boolean,
 ): AppSettings {
     return copy(
         advancedMode = if (enabled) AdvancedMode.G4arUnlockLab else AdvancedMode.Disabled,
         adapterUrl = adapterUrl.trim(),
         radioProfile = radioProfile,
         advancedAcknowledged = enabled && acknowledged,
+        skipStockBackup = enabled && skipStockBackup,
     )
 }

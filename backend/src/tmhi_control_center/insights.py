@@ -111,6 +111,7 @@ def _setup_steps(
     backup_count = len(firmware_backups.get("backups") or [])
     signal_score = _signal_score(overview)
     g4ar_enabled = advanced.get("mode") in {"g4ar_unlock_lab", "g4ar_firmware_lab"}
+    skip_stock_backup = bool(advanced.get("skip_stock_backup"))
 
     steps = [
         _step(
@@ -174,7 +175,22 @@ def _setup_steps(
         ),
     ]
 
-    if g4ar_enabled:
+    if g4ar_enabled and backup_count == 0 and skip_stock_backup:
+        steps.append(
+            {
+                "id": "g4ar-backup",
+                "title": "G4AR stock backup skipped for now",
+                "status": "skipped",
+                "tone": "warn",
+                "detail": (
+                    "The setup reminder is suppressed, but firmware override stays "
+                    "locked until backup, recovery, and hashes are verified."
+                ),
+                "action": "Create a stock backup later before any firmware or radio-profile experiment.",
+                "weight": 13,
+            }
+        )
+    elif g4ar_enabled:
         steps.append(
             _step(
                 "g4ar-backup",

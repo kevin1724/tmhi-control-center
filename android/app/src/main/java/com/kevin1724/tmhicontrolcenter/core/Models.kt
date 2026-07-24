@@ -13,6 +13,7 @@ data class AppSettings(
     val adapterUrl: String = "",
     val radioProfile: RadioProfile = RadioProfile.Auto,
     val advancedAcknowledged: Boolean = false,
+    val skipStockBackup: Boolean = false,
 ) {
     val gatewayBaseUrl: String
         get() = "http://$gatewayHost:$gatewayPort/TMI/v1"

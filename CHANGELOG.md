@@ -15,6 +15,9 @@ All notable changes to this new project will be documented here.
   adapter, and stock-backup guidance.
 - Added a built-in Docker adapter default at `http://127.0.0.1:8000` so the web
   G4AR lab can auto-fill the local adapter URL when advanced mode is enabled.
+- Added a saved option to skip the G4AR stock-backup setup reminder while
+  keeping firmware override locked behind backup, recovery, hash, and consent
+  checks.
 
 ### Changed
 

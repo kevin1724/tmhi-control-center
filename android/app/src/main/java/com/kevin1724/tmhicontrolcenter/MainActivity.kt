@@ -377,7 +377,11 @@ private fun HomelabScreen(
         item {
             SectionCard("G4AR Backup Status") {
                 if (state.backups.isEmpty()) {
-                    MutedText("No local stock backups saved on this phone yet.")
+                    if (state.settings.skipStockBackup) {
+                        MutedText("Stock backup reminder skipped for now. Firmware override still requires verified backup and recovery.")
+                    } else {
+                        MutedText("No local stock backups saved on this phone yet.")
+                    }
                 } else {
                     state.backups.forEach { backup ->
                         DetailRow(backup.id, "${backup.artifactCount} files - ${backup.firmwareVersion.ifBlank { "firmware unknown" }}")
@@ -543,6 +547,7 @@ private fun SettingsScreen(
     var adapterUrl by remember(state.settings.adapterUrl) { mutableStateOf(state.settings.adapterUrl) }
     var radioProfile by remember(state.settings.radioProfile) { mutableStateOf(state.settings.radioProfile) }
     var acknowledged by remember(state.settings.advancedAcknowledged) { mutableStateOf(state.settings.advancedAcknowledged) }
+    var skipStockBackup by remember(state.settings.skipStockBackup) { mutableStateOf(state.settings.skipStockBackup) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -593,7 +598,16 @@ private fun SettingsScreen(
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Enable lab", modifier = Modifier.weight(1f))
-                    Switch(checked = labEnabled, onCheckedChange = { labEnabled = it })
+                    Switch(
+                        checked = labEnabled,
+                        onCheckedChange = {
+                            labEnabled = it
+                            if (!it) {
+                                acknowledged = false
+                                skipStockBackup = false
+                            }
+                        },
+                    )
                 }
                 OutlinedTextField(adapterUrl, { adapterUrl = it }, label = { Text("Local adapter URL") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 DetailRow("Example", "http://router.local:8080")
@@ -604,9 +618,21 @@ private fun SettingsScreen(
                     Checkbox(checked = acknowledged, onCheckedChange = { acknowledged = it && labEnabled }, enabled = labEnabled)
                     Text("I own this G4AR and accept the firmware, warranty, carrier-term, and RF compliance risk.")
                 }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = skipStockBackup, onCheckedChange = { skipStockBackup = it && labEnabled }, enabled = labEnabled)
+                    Text("Skip the stock backup reminder for now. Firmware override still requires verified backup and recovery.")
+                }
                 Button(
                     onClick = {
-                        onSave(state.settings.withAdvanced(labEnabled, adapterUrl, radioProfile, acknowledged))
+                        onSave(
+                            state.settings.withAdvanced(
+                                labEnabled,
+                                adapterUrl,
+                                radioProfile,
+                                acknowledged,
+                                skipStockBackup,
+                            ),
+                        )
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
@@ -620,7 +646,11 @@ private fun SettingsScreen(
                     Text("Create Stock Backup")
                 }
                 if (state.backups.isEmpty()) {
-                    MutedText("No local stock backups saved on this phone yet.")
+                    if (skipStockBackup) {
+                        MutedText("Stock backup reminder skipped for now. Create a backup before firmware or radio-profile experiments.")
+                    } else {
+                        MutedText("No local stock backups saved on this phone yet.")
+                    }
                 } else {
                     state.backups.forEach { backup ->
                         DetailRow(backup.id, "${backup.artifactCount} files - ${backup.firmwareVersion.ifBlank { "firmware unknown" }}")
@@ -946,7 +976,16 @@ private fun androidSetupSteps(state: AppUiState): List<SetupStep> {
             weight = 8,
         ),
     )
-    if (g4arEnabled) {
+    if (g4arEnabled && state.backups.isEmpty() && state.settings.skipStockBackup) {
+        steps += SetupStep(
+            title = "G4AR stock backup skipped for now",
+            status = "skipped",
+            tone = "warn",
+            detail = "The setup reminder is suppressed, but firmware override stays locked until backup, recovery, and hashes are verified.",
+            action = "Create a stock backup later before any firmware or radio-profile experiment.",
+            weight = 13,
+        )
+    } else if (g4arEnabled) {
         steps += setupStep(
             title = "G4AR stock backup saved",
             done = state.backups.isNotEmpty(),

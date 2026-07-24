@@ -129,6 +129,7 @@ def advanced_modem_summary(settings: Any) -> dict[str, Any]:
         "built_in_adapter_selected": built_in_adapter_selected,
         "control_url_configured": adapter_configured or bool(effective_control_url),
         "requires_adapter": mode_info["adapter_required"],
+        "skip_stock_backup": settings.advanced_skip_stock_backup,
         "available_modes": [
             {
                 "value": key,
@@ -340,6 +341,7 @@ def g4ar_firmware_lab_status(settings: Any) -> dict[str, Any]:
         "adapter_ready": adapter_ready,
         "built_in_adapter_selected": built_in_adapter_selected,
         "effective_control_url": effective_control_url,
+        "stock_backup_skipped": settings.advanced_skip_stock_backup,
         "consent_phrase": G4AR_FLASH_CONSENT_PHRASE,
         "flash_warning": G4AR_FIRMWARE_WARNING,
         "flash_enabled": False,
@@ -351,6 +353,7 @@ def g4ar_firmware_lab_status(settings: Any) -> dict[str, Any]:
         "required_before_flash": [
             "Identify exact TMO-G4AR hardware revision and current firmware version.",
             "Create a complete local stock firmware backup.",
+            "Skipping the setup reminder does not replace a verified stock backup.",
             "Back up calibration, modem identity, MAC addresses, IMEI-related metadata, and config/NVRAM.",
             "Store SHA-256 hashes for stock backup and custom firmware image.",
             "Verify a working recovery path on that exact gateway before writing firmware.",

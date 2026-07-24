@@ -336,6 +336,7 @@ def test_advanced_modem_lab_uses_docker_adapter_default(
                 "mode": "g4ar_unlock_lab",
                 "control_url": "",
                 "acknowledged": True,
+                "skip_stock_backup": True,
             },
         )
 
@@ -347,13 +348,15 @@ def test_advanced_modem_lab_uses_docker_adapter_default(
     assert lab["control_url"] == "http://127.0.0.1:8000"
     assert lab["effective_control_url"] == "http://127.0.0.1:8000"
     assert lab["built_in_adapter_selected"] is True
+    assert lab["skip_stock_backup"] is True
     assert lab["capabilities"]["stock_firmware_backup"]["status"] == (
         "hardware_bridge_required"
     )
     assert lab["g4ar_unlock_lab"]["adapter_ready"] is False
-    assert "ADVANCED_MODEM_CONTROL_URL=http://127.0.0.1:8000\n" in env_path.read_text(
-        encoding="utf-8"
-    )
+    assert lab["g4ar_unlock_lab"]["stock_backup_skipped"] is True
+    saved_settings = env_path.read_text(encoding="utf-8")
+    assert "ADVANCED_MODEM_CONTROL_URL=http://127.0.0.1:8000\n" in saved_settings
+    assert "ADVANCED_SKIP_STOCK_BACKUP=true\n" in saved_settings
 
 
 def test_g4ar_firmware_lab_flash_gate_requires_full_consent(

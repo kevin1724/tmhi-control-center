@@ -126,6 +126,7 @@ configuration, event history, and firmware-lab backup manifests to persist.
 | `MAP_RADIUS_KM` | `0.8` | Tower lookup radius |
 | `PUBLIC_IP_LOCATION_ENABLED` | `true` | Allows rough public-IP map fallback |
 | `OPENCELLID_API_KEY` | empty | Optional tower lookup key |
+| `ADVANCED_SKIP_STOCK_BACKUP` | `false` | Suppress the G4AR stock-backup setup reminder only |
 | `FIRMWARE_BACKUP_DIR` | `/data/firmware-backups` | G4AR lab backup storage |
 
 The app also creates `/data/control-center.env` and can update settings from the
@@ -141,6 +142,7 @@ The lab can store:
 - Local adapter URL.
 - LTE anchor / 5G NSA, LTE-only, 5G SA, or scan-only intent.
 - Stock firmware backup metadata.
+- Optional stock-backup reminder suppression while exploring the UI.
 - SHA-256 backup and firmware hashes.
 - Risk acknowledgement and consent-gate state.
 
@@ -153,6 +155,9 @@ firmware backup, scan, tower lock, or radio-profile commands still require a
 trusted hardware bridge controlled by the user, such as an OpenWrt/ROOTer
 router, Raspberry Pi, mini PC, or Linux host. The adapter is expected to expose
 narrow endpoints like `GET /health` and `POST /g4ar/firmware/backup`.
+
+Skipping the stock-backup reminder does not unlock flashing. Firmware override
+still requires verified backup, recovery, hashes, and exact consent.
 
 Important limitations:
 

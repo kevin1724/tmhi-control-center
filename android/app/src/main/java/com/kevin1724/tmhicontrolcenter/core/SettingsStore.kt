@@ -19,6 +19,7 @@ class SettingsStore(context: Context) {
             adapterUrl = prefs.getString(KEY_ADAPTER_URL, "").orEmpty(),
             radioProfile = enumValue(KEY_RADIO_PROFILE, RadioProfile.Auto),
             advancedAcknowledged = prefs.getBoolean(KEY_ADVANCED_ACKNOWLEDGED, false),
+            skipStockBackup = prefs.getBoolean(KEY_SKIP_STOCK_BACKUP, false),
         )
     }
 
@@ -36,6 +37,7 @@ class SettingsStore(context: Context) {
             .putString(KEY_ADAPTER_URL, settings.adapterUrl.trim())
             .putString(KEY_RADIO_PROFILE, settings.radioProfile.name)
             .putBoolean(KEY_ADVANCED_ACKNOWLEDGED, settings.advancedAcknowledged)
+            .putBoolean(KEY_SKIP_STOCK_BACKUP, settings.skipStockBackup)
             .apply()
     }
 
@@ -77,5 +79,6 @@ class SettingsStore(context: Context) {
         const val KEY_ADAPTER_URL = "adapter_url"
         const val KEY_RADIO_PROFILE = "radio_profile"
         const val KEY_ADVANCED_ACKNOWLEDGED = "advanced_acknowledged"
+        const val KEY_SKIP_STOCK_BACKUP = "skip_stock_backup"
     }
 }

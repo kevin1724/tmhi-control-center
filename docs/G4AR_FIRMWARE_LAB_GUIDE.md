@@ -120,11 +120,17 @@ http://192.168.12.50:8080
 5. Choose a `G4AR radio profile`.
 6. Read the warning.
 7. Check the ownership/risk acknowledgement.
-8. Click `Save Unlock Lab`.
+8. Optionally check `Skip the stock backup reminder for now` if you are only
+   exploring the UI and do not want the readiness checklist to keep prompting.
+9. Click `Save Unlock Lab`.
 
 The app stores the selected profile and adapter URL. If the field was blank, the
 saved URL becomes `http://127.0.0.1:8000`. A hardware adapter is responsible for
 any real device-specific command support.
+
+Skipping the reminder does not count as a backup and does not unlock firmware
+override. The flash gate still requires backup, recovery, hashes, and exact
+typed consent.
 
 ## Step 3: Create A Stock Backup
 

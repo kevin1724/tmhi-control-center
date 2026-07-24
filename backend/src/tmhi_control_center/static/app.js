@@ -137,6 +137,7 @@ const ids = [
   "signalScore",
   "signalStateTag",
   "signalSummary",
+  "skipStockBackupReminder",
   "testFrequency",
   "themeModeLabel",
   "towerMap",
@@ -184,6 +185,7 @@ const detailLabels = {
   radio_mode_override: "Radio override",
   lte_anchor_override: "LTE anchor / NSA",
   stock_firmware_backup: "Stock backup",
+  stock_backup_skipped: "Backup reminder",
   ssid: "SSID",
   ssid_2g: "2.4 GHz SSID",
   ssid_5g: "5 GHz SSID",
@@ -251,6 +253,7 @@ function bindControls() {
   els.advancedModemAcknowledge.addEventListener("change", updateControlState);
   els.advancedUploadProfile.addEventListener("change", updateControlState);
   els.advancedRadioProfile.addEventListener("change", updateControlState);
+  els.skipStockBackupReminder.addEventListener("change", updateControlState);
   els.firmwareBackupSha256.addEventListener("input", updateControlState);
   els.firmwareSha256.addEventListener("input", updateControlState);
   els.firmwareConsentPhrase.addEventListener("input", updateControlState);
@@ -656,6 +659,7 @@ function buildSetupSteps() {
     : 0;
   const signalScore = numericScore(state.overview?.signal?.score);
   const g4arEnabled = isG4ARLabMode(advanced.mode);
+  const skipStockBackup = Boolean(advanced.skip_stock_backup);
 
   const steps = [
     setupStep(
@@ -719,7 +723,18 @@ function buildSetupSteps() {
     ),
   ];
 
-  if (g4arEnabled) {
+  if (g4arEnabled && backupCount === 0 && skipStockBackup) {
+    steps.push({
+      id: "g4ar-backup",
+      title: "G4AR stock backup skipped for now",
+      status: "skipped",
+      tone: "warn",
+      detail:
+        "The setup reminder is suppressed, but firmware override stays locked until backup, recovery, and hashes are verified.",
+      action: "Create a stock backup later before any firmware or radio-profile experiment.",
+      weight: 13,
+    });
+  } else if (g4arEnabled) {
     steps.push(
       setupStep(
         "g4ar-backup",
@@ -1138,6 +1153,9 @@ function renderAdvancedModemControls() {
   if (els.advancedModemAcknowledge && document.activeElement !== els.advancedModemAcknowledge) {
     els.advancedModemAcknowledge.checked = Boolean(lab.acknowledged);
   }
+  if (els.skipStockBackupReminder && document.activeElement !== els.skipStockBackupReminder) {
+    els.skipStockBackupReminder.checked = Boolean(lab.skip_stock_backup);
+  }
   if (els.advancedUploadProfile && document.activeElement !== els.advancedUploadProfile) {
     els.advancedUploadProfile.value = lab.upload_priority?.profile || "balanced";
   }
@@ -1181,6 +1199,7 @@ function renderAdvancedModemControls() {
       lab_status: firmwareLab.flash_status || "Select G4AR unlock / radio lab mode",
       radio_goal: g4arRadio.label || "Auto",
       adapter_ready: firmwareLab.adapter_ready,
+      stock_backup_skipped: firmwareLab.stock_backup_skipped,
       required_consent: firmwareLab.consent_phrase,
     },
     "G4AR unlock / radio lab status loads after settings refresh."
@@ -1197,12 +1216,13 @@ function renderFirmwareBackupList() {
     ? state.firmwareBackups.backups
     : [];
   replaceChildren(els.firmwareBackupList);
-  setText(
-    els.firmwareBackupStatus,
-    state.firmwareBackups?.backup_dir
-      ? `Backup folder: ${state.firmwareBackups.backup_dir}`
-      : "Backup history loads after refresh."
-  );
+  const backupStatus = state.firmwareBackups?.backup_dir
+    ? `Backup folder: ${state.firmwareBackups.backup_dir}`
+    : "Backup history loads after refresh.";
+  const skipMessage = labSkipsStockBackup()
+    ? "Reminder skipped for now. Override gate still requires verified backup and recovery."
+    : "";
+  setText(els.firmwareBackupStatus, compactJoin([backupStatus, skipMessage], " "));
 
   if (!backups.length) {
     els.firmwareBackupList.append(emptyNode("No local G4AR stock backups saved yet."));
@@ -1256,6 +1276,10 @@ function isG4ARLabMode(mode) {
 
 function isAdvancedMode(mode) {
   return mode && mode !== "disabled";
+}
+
+function labSkipsStockBackup() {
+  return Boolean(state.config?.advanced_modem?.skip_stock_backup);
 }
 
 function effectiveAdvancedControlUrl() {
@@ -2162,6 +2186,7 @@ async function saveAdvancedModemSettings() {
         acknowledged,
         upload_profile: els.advancedUploadProfile.value,
         radio_profile: els.advancedRadioProfile.value,
+        skip_stock_backup: els.skipStockBackupReminder.checked,
       },
     });
     renderAll();
@@ -2432,6 +2457,7 @@ function updateControlState() {
   els.advancedModemAcknowledge.disabled = busy || !advancedEnabled;
   els.advancedUploadProfile.disabled = busy || !advancedEnabled;
   els.advancedRadioProfile.disabled = busy || !g4arLabEnabled;
+  els.skipStockBackupReminder.disabled = busy || !g4arLabEnabled;
   els.firmwareBackupButton.disabled = busy || !g4arBackupReady;
   els.firmwareBackupSha256.disabled = busy || !g4arLabEnabled;
   els.firmwareSha256.disabled = busy || !g4arLabEnabled;

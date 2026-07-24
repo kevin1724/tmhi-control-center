@@ -21,6 +21,7 @@ DEFAULT_MANAGED_ENV_VALUES: tuple[tuple[str, str], ...] = (
     ("ADVANCED_MODEM_ACKNOWLEDGED", "false"),
     ("ADVANCED_UPLOAD_PROFILE", "balanced"),
     ("ADVANCED_RADIO_PROFILE", "auto"),
+    ("ADVANCED_SKIP_STOCK_BACKUP", "false"),
     ("FIRMWARE_BACKUP_DIR", "/data/firmware-backups"),
     ("DRY_RUN", "true"),
     ("WATCHDOG_ENABLED", "true"),

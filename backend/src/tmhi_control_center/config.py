@@ -98,6 +98,7 @@ class Settings:
     advanced_modem_acknowledged: bool = False
     advanced_upload_profile: str = "balanced"
     advanced_radio_profile: str = "auto"
+    advanced_skip_stock_backup: bool = False
     firmware_backup_dir: str = "/data/firmware-backups"
 
     watchdog_enabled: bool = True
@@ -228,6 +229,11 @@ class Settings:
                 managed_values,
                 "ADVANCED_RADIO_PROFILE",
                 "auto",
+            ),
+            advanced_skip_stock_backup=_bool(
+                managed_values,
+                "ADVANCED_SKIP_STOCK_BACKUP",
+                False,
             ),
             firmware_backup_dir=_env(
                 managed_values,

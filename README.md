@@ -161,6 +161,7 @@ Common settings:
 | `MAP_RADIUS_KM` | `0.8` | Tower search radius |
 | `PUBLIC_IP_LOCATION_ENABLED` | `true` | Use public IP as a rough map fallback |
 | `OPENCELLID_API_KEY` | empty | Optional tower lookup key |
+| `ADVANCED_SKIP_STOCK_BACKUP` | `false` | Suppress the G4AR stock-backup setup reminder without unlocking firmware work |
 | `FIRMWARE_BACKUP_DIR` | `/data/firmware-backups` | Local G4AR backup storage |
 | `DRY_RUN` | `true` | Prevent automatic reboot actions while testing |
 
@@ -196,6 +197,8 @@ Use the lab for:
 
 - Recording a local adapter URL.
 - Creating and listing stock firmware backups through a trusted local adapter.
+- Skipping the stock-backup setup reminder for now when you are only exploring
+  the UI.
 - Saving SHA-256 hashes for backup and firmware artifacts.
 - Tracking LTE anchor / 5G NSA, LTE-only, 5G SA, and scan-only profile intent.
 - Keeping firmware override work locked behind backup, recovery, hash, and
@@ -216,6 +219,10 @@ trusted hardware bridge controlled by the user, such as an OpenWrt/ROOTer
 router, Raspberry Pi, mini PC, or Linux host attached to the modem lab hardware.
 TMHI Control Center only calls narrow endpoints such as `GET /health` and
 `POST /g4ar/firmware/backup`.
+
+The `Skip stock backup reminder for now` option only suppresses the readiness
+checklist reminder. It does not unlock firmware override. The override gate
+still requires verified backup, recovery, hashes, and exact consent.
 
 Important limitations:
 
