@@ -347,6 +347,10 @@ private fun HomelabScreen(
                     "This is not the stock gateway login page. It is a LAN-only HTTP service running on hardware you control, such as OpenWrt/ROOTer, a Raspberry Pi, a mini PC, or a Linux box attached to the modem lab hardware.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Text(
+                    "The Docker web app auto-uses http://127.0.0.1:8000 inside its container. On Android, use the Docker host LAN URL or a real hardware adapter URL.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Text("How to get one", fontWeight = FontWeight.Black)
                 adapterGuideSteps().forEachIndexed { index, step ->
                     Text("${index + 1}. $step")
@@ -581,6 +585,10 @@ private fun SettingsScreen(
                 )
                 Text(
                     "The local adapter URL is not the stock gateway login URL. It is a LAN-only service on hardware you control that exposes safe backup, scan, and radio-profile endpoints for lab hardware.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "Docker web users can leave this blank there; Docker saves its internal http://127.0.0.1:8000 default. On Android, enter the Docker host LAN URL or your hardware adapter URL.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1068,6 +1076,7 @@ private fun androidPlaybookCards(state: AppUiState): List<PlaybookCard> {
 private fun adapterGuideSteps(): List<String> {
     return listOf(
         "Choose the device that will physically reach the modem or gateway lab hardware.",
+        "If using the Docker web app, leave its adapter field blank and let Docker use http://127.0.0.1:8000 internally.",
         "Install or build a trusted adapter service on that local device.",
         "Bind it to the LAN only and confirm GET /health works from the phone.",
         "Paste the base URL in Settings and create a stock backup before experiments.",

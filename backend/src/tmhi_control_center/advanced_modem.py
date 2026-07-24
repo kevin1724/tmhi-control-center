@@ -41,6 +41,7 @@ ADVANCED_MODEM_MODES = {
     },
 }
 
+BUILT_IN_DOCKER_ADAPTER_URL = "http://127.0.0.1:8000"
 G4AR_LAB_MODES = {"g4ar_unlock_lab", "g4ar_firmware_lab"}
 
 UPLOAD_PRIORITY_PROFILES = {
@@ -111,6 +112,10 @@ def advanced_modem_summary(settings: Any) -> dict[str, Any]:
     mode_info = ADVANCED_MODEM_MODES.get(mode, ADVANCED_MODEM_MODES["disabled"])
     enabled = mode != "disabled" and settings.advanced_modem_acknowledged
     adapter_configured = bool(settings.advanced_modem_control_url)
+    effective_control_url = settings.advanced_modem_control_url or (
+        BUILT_IN_DOCKER_ADAPTER_URL if mode != "disabled" else ""
+    )
+    built_in_adapter_selected = effective_control_url.rstrip("/") == BUILT_IN_DOCKER_ADAPTER_URL
 
     return {
         "mode": mode,
@@ -119,7 +124,10 @@ def advanced_modem_summary(settings: Any) -> dict[str, Any]:
         "enabled": enabled,
         "acknowledged": settings.advanced_modem_acknowledged,
         "control_url": settings.advanced_modem_control_url,
-        "control_url_configured": adapter_configured,
+        "effective_control_url": effective_control_url,
+        "default_control_url": BUILT_IN_DOCKER_ADAPTER_URL,
+        "built_in_adapter_selected": built_in_adapter_selected,
+        "control_url_configured": adapter_configured or bool(effective_control_url),
         "requires_adapter": mode_info["adapter_required"],
         "available_modes": [
             {
@@ -130,29 +138,49 @@ def advanced_modem_summary(settings: Any) -> dict[str, Any]:
             for key, value in ADVANCED_MODEM_MODES.items()
         ],
         "capabilities": {
-            "cell_lock": capability_status(enabled, adapter_configured),
-            "band_lock": capability_status(enabled, adapter_configured),
-            "cell_scan": capability_status(enabled, adapter_configured),
+            "cell_lock": capability_status(
+                enabled,
+                adapter_configured,
+                built_in_adapter_selected=built_in_adapter_selected,
+            ),
+            "band_lock": capability_status(
+                enabled,
+                adapter_configured,
+                built_in_adapter_selected=built_in_adapter_selected,
+            ),
+            "cell_scan": capability_status(
+                enabled,
+                adapter_configured,
+                built_in_adapter_selected=built_in_adapter_selected,
+            ),
             "lte_anchor_override": g4ar_capability_status(
                 settings.advanced_modem_mode,
                 enabled,
                 adapter_configured,
+                built_in_adapter_selected=built_in_adapter_selected,
             ),
             "radio_mode_override": g4ar_capability_status(
                 settings.advanced_modem_mode,
                 enabled,
                 adapter_configured,
+                built_in_adapter_selected=built_in_adapter_selected,
             ),
-            "upload_priority_qos": capability_status(enabled, adapter_configured),
+            "upload_priority_qos": capability_status(
+                enabled,
+                adapter_configured,
+                built_in_adapter_selected=built_in_adapter_selected,
+            ),
             "stock_firmware_backup": firmware_capability_status(
                 settings.advanced_modem_mode,
                 enabled,
                 adapter_configured,
+                built_in_adapter_selected=built_in_adapter_selected,
             ),
             "custom_firmware_flash": firmware_flash_status(
                 settings.advanced_modem_mode,
                 enabled,
                 adapter_configured,
+                built_in_adapter_selected=built_in_adapter_selected,
             ),
             "tx_power_override": {
                 "supported": False,
@@ -177,6 +205,7 @@ def advanced_modem_summary(settings: Any) -> dict[str, Any]:
             "notes": [
                 "This is QoS/SQM planning, not transmit-power control.",
                 "A local adapter must apply the profile on supported router firmware.",
+                "The Docker default adapter URL is only a built-in coordinator unless hardware-specific bridge tooling is installed.",
             ],
         },
         "g4ar_radio": g4ar_radio_summary(settings),
@@ -188,6 +217,7 @@ def advanced_modem_summary(settings: Any) -> dict[str, Any]:
             "Use SQM/QoS to keep upload queues short when download traffic is heavy.",
             "On owned G4AR lab units, compare Auto, LTE anchor/5G NSA, LTE-only, and NR SA profiles.",
             "Prefer supported band/cell locks from the modem vendor or router firmware.",
+            "Use the built-in Docker adapter URL for health checks and defaults; use a hardware bridge for real modem commands.",
             "Retest upload, ping, and packet loss after each placement or antenna change.",
         ],
         "warnings": [
@@ -198,7 +228,12 @@ def advanced_modem_summary(settings: Any) -> dict[str, Any]:
     }
 
 
-def capability_status(enabled: bool, adapter_configured: bool) -> dict[str, Any]:
+def capability_status(
+    enabled: bool,
+    adapter_configured: bool,
+    *,
+    built_in_adapter_selected: bool = False,
+) -> dict[str, Any]:
     if not enabled:
         return {
             "supported": False,
@@ -211,6 +246,15 @@ def capability_status(enabled: bool, adapter_configured: bool) -> dict[str, Any]
             "status": "adapter_required",
             "reason": "Configure a local adapter URL before sending modem control requests.",
         }
+    if built_in_adapter_selected:
+        return {
+            "supported": False,
+            "status": "hardware_bridge_required",
+            "reason": (
+                "The built-in Docker adapter is reachable for health checks and "
+                "defaults, but real modem commands require trusted hardware bridge tooling."
+            ),
+        }
     return {
         "supported": True,
         "status": "adapter_ready",
@@ -222,6 +266,8 @@ def firmware_capability_status(
     mode: str,
     enabled: bool,
     adapter_configured: bool,
+    *,
+    built_in_adapter_selected: bool = False,
 ) -> dict[str, Any]:
     if mode not in G4AR_LAB_MODES:
         return {
@@ -229,13 +275,19 @@ def firmware_capability_status(
             "status": "mode_required",
             "reason": "Select G4AR unlock / radio lab mode first.",
         }
-    return capability_status(enabled, adapter_configured)
+    return capability_status(
+        enabled,
+        adapter_configured,
+        built_in_adapter_selected=built_in_adapter_selected,
+    )
 
 
 def firmware_flash_status(
     mode: str,
     enabled: bool,
     adapter_configured: bool,
+    *,
+    built_in_adapter_selected: bool = False,
 ) -> dict[str, Any]:
     if mode not in G4AR_LAB_MODES:
         return {
@@ -244,9 +296,23 @@ def firmware_flash_status(
             "reason": "Select G4AR unlock / radio lab mode first.",
         }
     if not enabled:
-        return capability_status(enabled, adapter_configured)
+        return capability_status(
+            enabled,
+            adapter_configured,
+            built_in_adapter_selected=built_in_adapter_selected,
+        )
     if not adapter_configured:
-        return capability_status(enabled, adapter_configured)
+        return capability_status(
+            enabled,
+            adapter_configured,
+            built_in_adapter_selected=built_in_adapter_selected,
+        )
+    if built_in_adapter_selected:
+        return capability_status(
+            enabled,
+            adapter_configured,
+            built_in_adapter_selected=built_in_adapter_selected,
+        )
     return {
         "supported": False,
         "status": "consent_and_recovery_required",
@@ -259,13 +325,21 @@ def firmware_flash_status(
 
 def g4ar_firmware_lab_status(settings: Any) -> dict[str, Any]:
     active = settings.advanced_modem_mode in G4AR_LAB_MODES
+    built_in_adapter_selected = (
+        settings.advanced_modem_control_url.rstrip("/") == BUILT_IN_DOCKER_ADAPTER_URL
+    )
     adapter_ready = active and settings.advanced_modem_acknowledged and bool(
         settings.advanced_modem_control_url
+    ) and not built_in_adapter_selected
+    effective_control_url = settings.advanced_modem_control_url or (
+        BUILT_IN_DOCKER_ADAPTER_URL if active else ""
     )
     return {
         "device": "Arcadyan TMO-G4AR",
         "active": active,
         "adapter_ready": adapter_ready,
+        "built_in_adapter_selected": built_in_adapter_selected,
+        "effective_control_url": effective_control_url,
         "consent_phrase": G4AR_FLASH_CONSENT_PHRASE,
         "flash_warning": G4AR_FIRMWARE_WARNING,
         "flash_enabled": False,
@@ -327,6 +401,8 @@ def g4ar_capability_status(
     mode: str,
     enabled: bool,
     adapter_configured: bool,
+    *,
+    built_in_adapter_selected: bool = False,
 ) -> dict[str, Any]:
     if mode not in G4AR_LAB_MODES:
         return {
@@ -334,7 +410,11 @@ def g4ar_capability_status(
             "status": "mode_required",
             "reason": "Select G4AR unlock / radio lab mode first.",
         }
-    return capability_status(enabled, adapter_configured)
+    return capability_status(
+        enabled,
+        adapter_configured,
+        built_in_adapter_selected=built_in_adapter_selected,
+    )
 
 
 def validate_flash_consent(payload: dict[str, Any]) -> list[str]:

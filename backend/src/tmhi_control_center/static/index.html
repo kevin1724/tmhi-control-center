@@ -12,7 +12,7 @@
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
     <link rel="manifest" href="/static/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260724-homelab" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260724-adapter-default" />
   </head>
   <body>
     <div class="app-shell">
@@ -755,19 +755,21 @@
                       id="advancedModemControlUrl"
                       type="url"
                       inputmode="url"
-                      placeholder="http://router.local:8080"
+                      placeholder="Auto: http://127.0.0.1:8000"
                     />
+                    <small>Leave blank to use the built-in Docker adapter.</small>
                   </label>
                 </div>
                 <div class="adapter-mini-guide">
                   <strong>What is this URL?</strong>
                   <p>
-                    The local adapter URL is not the stock gateway login page. It is a small
-                    LAN-only service you run on owned hardware, such as an OpenWrt/ROOTer
-                    router, Raspberry Pi, mini PC, or Linux box that can safely talk to the
-                    modem side of your lab setup.
+                    Docker auto-fills its own built-in adapter URL. That removes the setup
+                    guesswork for health checks and lab defaults. Real firmware backup,
+                    tower lock, cell scan, or radio-profile commands still need trusted
+                    hardware bridge tooling attached to the modem side of your lab setup.
                   </p>
                   <div class="code-chip-list">
+                    <code>http://127.0.0.1:8000</code>
                     <code>http://router.local:8080</code>
                     <code>http://192.168.1.2:8765</code>
                     <code>GET /health</code>
@@ -888,6 +890,6 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-    <script src="/static/app.js?v=20260724-homelab" defer></script>
+    <script src="/static/app.js?v=20260724-adapter-default" defer></script>
   </body>
 </html>

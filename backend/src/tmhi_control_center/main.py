@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from . import __version__
 from .advanced_modem import (
+    BUILT_IN_DOCKER_ADAPTER_URL,
     G4AR_LAB_MODES,
     g4ar_firmware_lab_status,
     validate_flash_consent,
@@ -436,6 +437,8 @@ async def update_advanced_modem_settings(
     request: AdvancedModemSettingsUpdateRequest,
 ) -> dict[str, Any]:
     control_url = (request.control_url or "").strip()
+    if request.mode != "disabled" and not control_url:
+        control_url = BUILT_IN_DOCKER_ADAPTER_URL
     if request.mode != "disabled" and not request.acknowledged:
         raise HTTPException(
             status_code=409,
@@ -482,6 +485,64 @@ async def update_advanced_modem_settings(
         },
     )
     return settings.safe_summary()
+
+
+@app.get("/health")
+async def built_in_adapter_health() -> dict[str, Any]:
+    return {
+        "ok": True,
+        "adapter": "tmhi-control-center-docker",
+        "version": __version__,
+        "url": BUILT_IN_DOCKER_ADAPTER_URL,
+        "mode": "built_in_coordinator",
+        "message": (
+            "The built-in Docker adapter is reachable. Real firmware backup, "
+            "cell scan, tower lock, and radio-profile changes still require "
+            "hardware-specific bridge tooling."
+        ),
+        "capabilities": {
+            "health": True,
+            "stock_firmware_backup": False,
+            "radio_profile": False,
+            "cell_scan": False,
+            "cell_lock": False,
+            "firmware_flash": False,
+            "tx_power_override": False,
+        },
+    }
+
+
+def _built_in_adapter_not_implemented(action: str) -> HTTPException:
+    return HTTPException(
+        status_code=501,
+        detail=(
+            f"The built-in Docker adapter received the {action} request, but no "
+            "hardware-specific bridge is installed. Keep this Docker URL as the "
+            "default for health checks, then connect a trusted OpenWrt/ROOTer, "
+            "ModemManager, QMI/MBIM, or vendor-specific adapter before running "
+            "real modem or firmware operations."
+        ),
+    )
+
+
+@app.post("/g4ar/firmware/backup")
+async def built_in_adapter_g4ar_backup() -> dict[str, Any]:
+    raise _built_in_adapter_not_implemented("G4AR stock backup")
+
+
+@app.post("/modem/radio/profile")
+async def built_in_adapter_radio_profile() -> dict[str, Any]:
+    raise _built_in_adapter_not_implemented("radio profile")
+
+
+@app.post("/modem/cell/scan")
+async def built_in_adapter_cell_scan() -> dict[str, Any]:
+    raise _built_in_adapter_not_implemented("cell scan")
+
+
+@app.post("/modem/lock")
+async def built_in_adapter_modem_lock() -> dict[str, Any]:
+    raise _built_in_adapter_not_implemented("tower lock")
 
 
 @app.get("/api/g4ar/firmware/status")

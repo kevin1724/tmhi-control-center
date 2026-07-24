@@ -206,9 +206,14 @@ Read the guide before enabling this mode:
 - [G4AR Firmware Lab Guide](docs/G4AR_FIRMWARE_LAB_GUIDE.md)
 
 The local adapter URL is not the stock gateway login page. It is the base URL of
-a small HTTP service running on trusted LAN hardware controlled by the user,
-such as an OpenWrt/ROOTer router, Raspberry Pi, mini PC, or Linux host. The
-adapter is where device-specific backup, scan, and radio-profile commands live.
+a small HTTP service. When the Docker app is running, TMHI Control Center
+automatically uses its built-in Docker adapter URL, `http://127.0.0.1:8000`, so
+most users can leave this field blank.
+
+The built-in Docker adapter is useful for health checks and default setup. Real
+firmware backup, scan, tower lock, or radio-profile commands still require a
+trusted hardware bridge controlled by the user, such as an OpenWrt/ROOTer
+router, Raspberry Pi, mini PC, or Linux host attached to the modem lab hardware.
 TMHI Control Center only calls narrow endpoints such as `GET /health` and
 `POST /g4ar/firmware/backup`.
 

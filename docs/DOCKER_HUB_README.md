@@ -144,11 +144,15 @@ The lab can store:
 - SHA-256 backup and firmware hashes.
 - Risk acknowledgement and consent-gate state.
 
-The local adapter URL is not the stock gateway login page. It is the base URL of
-a LAN-only service running on trusted hardware the user controls, such as an
-OpenWrt/ROOTer router, Raspberry Pi, mini PC, or Linux host. The adapter is
-expected to expose narrow endpoints like `GET /health` and
-`POST /g4ar/firmware/backup`.
+The local adapter URL is not the stock gateway login page. When this Docker
+image is running, the app automatically uses its built-in Docker adapter URL,
+`http://127.0.0.1:8000`, so most users can leave the field blank.
+
+The built-in Docker adapter is useful for health checks and default setup. Real
+firmware backup, scan, tower lock, or radio-profile commands still require a
+trusted hardware bridge controlled by the user, such as an OpenWrt/ROOTer
+router, Raspberry Pi, mini PC, or Linux host. The adapter is expected to expose
+narrow endpoints like `GET /health` and `POST /g4ar/firmware/backup`.
 
 Important limitations:
 

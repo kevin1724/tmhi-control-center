@@ -16,7 +16,8 @@ behind explicit consent.
 
 - A G4AR gateway that you own and can afford to recover or replace.
 - Current gateway admin password saved in TMHI Control Center.
-- A trusted local adapter running on your LAN.
+- The built-in Docker adapter URL, or a trusted hardware adapter running on your
+  LAN for real modem operations.
 - A complete stock backup from this exact gateway.
 - A recovery method verified on this exact gateway before any firmware writing.
 - SHA-256 hashes for every backup and firmware artifact.
@@ -29,8 +30,20 @@ is not from your own verified backup or an authorized source, treat it as unsafe
 
 ## What The Local Adapter Must Do
 
-The adapter is the device-specific bridge between TMHI Control Center and your
-owned gateway or router/modem environment. Keep it local-only.
+The Docker app automatically provides a built-in adapter URL:
+
+```text
+http://127.0.0.1:8000
+```
+
+You can leave `Local adapter URL` blank in the web UI and TMHI Control Center
+will save that Docker default for you. The built-in adapter answers health
+checks, removes setup guesswork, and keeps the UI consistent.
+
+For real stock firmware backup, cell scan, tower lock, or radio-profile changes,
+you still need a trusted hardware-specific adapter. That adapter is the bridge
+between TMHI Control Center and your owned gateway or router/modem environment.
+Keep it local-only.
 
 Required backup endpoint:
 
@@ -97,7 +110,8 @@ controls and deeper gateway data may not work.
 1. Go to `Settings`.
 2. Find `G4AR Unlock / Radio Lab`.
 3. Set `Control mode` to `G4AR unlock / radio lab`.
-4. Set `Local adapter URL` to your adapter, for example:
+4. Leave `Local adapter URL` blank to use the built-in Docker default, or set it
+   to your hardware adapter, for example:
 
 ```text
 http://192.168.12.50:8080
@@ -108,8 +122,9 @@ http://192.168.12.50:8080
 7. Check the ownership/risk acknowledgement.
 8. Click `Save Unlock Lab`.
 
-The app stores the selected profile and adapter URL. The adapter is responsible
-for any device-specific command support.
+The app stores the selected profile and adapter URL. If the field was blank, the
+saved URL becomes `http://127.0.0.1:8000`. A hardware adapter is responsible for
+any real device-specific command support.
 
 ## Step 3: Create A Stock Backup
 
@@ -195,13 +210,18 @@ local adapter can verify backup and recovery on real owned hardware.
 `Create Stock Backup` is disabled:
 
 - Select `G4AR unlock / radio lab`.
-- Enter a local adapter URL.
 - Check the ownership/risk acknowledgement.
 - Click `Save Unlock Lab`.
+- The web UI will use the Docker adapter URL automatically if the adapter field
+  is blank.
 
 Backup fails:
 
-- Confirm the adapter is reachable from the Docker host.
+- Confirm whether you are using the built-in Docker adapter or a real hardware
+  adapter.
+- The built-in Docker adapter is reachable but cannot create real firmware
+  backups without hardware bridge tooling.
+- If using a hardware adapter, confirm it is reachable from the Docker host.
 - Confirm the adapter implements `POST /g4ar/firmware/backup`.
 - Check adapter logs.
 - Make sure the adapter returns JSON.

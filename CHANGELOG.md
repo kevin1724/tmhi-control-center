@@ -13,6 +13,8 @@ All notable changes to this new project will be documented here.
   router offload/SQM playbook, G4AR local adapter guide, and snapshot download.
 - Added a native Android Homelab tab with matching setup, signal, playbook,
   adapter, and stock-backup guidance.
+- Added a built-in Docker adapter default at `http://127.0.0.1:8000` so the web
+  G4AR lab can auto-fill the local adapter URL when advanced mode is enabled.
 
 ### Changed
 

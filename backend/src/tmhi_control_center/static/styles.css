@@ -908,6 +908,12 @@ summary:focus-visible {
   overflow-wrap: anywhere;
 }
 
+.field small {
+  color: var(--muted);
+  font-weight: 650;
+  line-height: 1.35;
+}
+
 .field input,
 .field select {
   min-width: 0;

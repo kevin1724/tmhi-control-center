@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from .advanced_modem import BUILT_IN_DOCKER_ADAPTER_URL
+
 ADAPTER_EXAMPLES = (
+    BUILT_IN_DOCKER_ADAPTER_URL,
     "http://router.local:8080",
     "http://192.168.1.2:8765",
     "http://rooter.lan:8080",
@@ -388,19 +391,21 @@ def _adapter_guide(config: dict[str, Any]) -> dict[str, Any]:
         "status": "ready" if adapter_ready else "setup_needed",
         "title": "Local adapter URL",
         "summary": (
-            "A local adapter URL is the address of a small HTTP service running on hardware you control. "
-            "It is not the stock gateway address and it is not a firmware download site."
+            "Docker can use its built-in local adapter URL automatically. Real firmware backup, "
+            "cell scan, tower lock, or radio-profile changes still need a hardware-specific bridge."
         ),
         "what_it_does": [
+            "Defaults to the Docker app itself for adapter health checks and simple setup.",
             "Runs on an OpenWrt/ROOTer router, Raspberry Pi, mini PC, or Linux host on your LAN.",
             "Talks to an owned modem/gateway through supported local tools such as QMI, MBIM, AT, serial, or vendor tooling.",
             "Exposes narrow HTTP endpoints that TMHI Control Center can call for backups, scans, and profile intent.",
             "Keeps risky device-specific commands outside the main app until they can be tested and audited.",
         ],
         "how_to_get_one": [
-            "Choose the device that will physically reach the modem or gateway lab hardware.",
+            "Leave the field blank to use the built-in Docker adapter URL.",
+            "For real modem commands, choose the device that will physically reach the modem or gateway lab hardware.",
             "Install or build a trusted adapter service on that local device.",
-            "Bind it to the LAN only, confirm its health endpoint, then paste its base URL here.",
+            "Bind it to the LAN only, confirm its health endpoint, then paste its base URL only if it is different from the Docker default.",
             "Create a stock backup before any firmware or radio-profile experiment.",
         ],
         "examples": list(ADAPTER_EXAMPLES),

@@ -54,6 +54,12 @@ async def create_g4ar_firmware_backup(
 
     if not response.is_success:
         detail = response.text.strip()[:240] or response.reason_phrase
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = None
+        if isinstance(payload, dict) and payload.get("detail"):
+            detail = str(payload["detail"])
         raise FirmwareBackupError(f"Local adapter backup failed: {detail}")
 
     try:

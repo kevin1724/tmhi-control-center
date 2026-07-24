@@ -321,6 +321,41 @@ def test_advanced_modem_lab_requires_acknowledgement_and_saves_settings(
     assert disabled.json()["advanced_modem"]["enabled"] is False
 
 
+def test_advanced_modem_lab_uses_docker_adapter_default(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    main = load_main(monkeypatch, tmp_path)
+    env_path = tmp_path / "control-center.env"
+
+    with TestClient(main.app) as client:
+        health = client.get("/health")
+        saved = client.post(
+            "/api/advanced-modem/settings",
+            json={
+                "mode": "g4ar_unlock_lab",
+                "control_url": "",
+                "acknowledged": True,
+            },
+        )
+
+    assert health.status_code == 200
+    assert health.json()["adapter"] == "tmhi-control-center-docker"
+    assert health.json()["url"] == "http://127.0.0.1:8000"
+    assert saved.status_code == 200
+    lab = saved.json()["advanced_modem"]
+    assert lab["control_url"] == "http://127.0.0.1:8000"
+    assert lab["effective_control_url"] == "http://127.0.0.1:8000"
+    assert lab["built_in_adapter_selected"] is True
+    assert lab["capabilities"]["stock_firmware_backup"]["status"] == (
+        "hardware_bridge_required"
+    )
+    assert lab["g4ar_unlock_lab"]["adapter_ready"] is False
+    assert "ADVANCED_MODEM_CONTROL_URL=http://127.0.0.1:8000\n" in env_path.read_text(
+        encoding="utf-8"
+    )
+
+
 def test_g4ar_firmware_lab_flash_gate_requires_full_consent(
     monkeypatch,
     tmp_path,

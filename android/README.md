@@ -101,3 +101,8 @@ backup/recovery first.
 The local adapter URL is not the stock gateway login page. It is a LAN-only HTTP
 service running on hardware the user controls, such as OpenWrt/ROOTer, a
 Raspberry Pi, a mini PC, or a Linux host attached to the lab hardware.
+
+The Docker web app can leave this field blank and automatically use its internal
+`http://127.0.0.1:8000` adapter default. The Android app should not use that
+localhost value unless the adapter is actually running on the phone. For Android,
+enter the Docker host's LAN URL or the LAN URL of the hardware adapter.

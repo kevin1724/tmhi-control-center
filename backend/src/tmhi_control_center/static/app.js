@@ -4,6 +4,7 @@ const DEFAULT_VIEW = "dashboard";
 const DEFAULT_MAP_CENTER = { latitude: 39.8283, longitude: -98.5795 };
 const DEFAULT_MAP_RADIUS_KM = 0.8;
 const MAP_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const BUILT_IN_DOCKER_ADAPTER_URL = "http://127.0.0.1:8000";
 
 const state = {
   config: null,
@@ -155,6 +156,7 @@ const detailLabels = {
   apn: "APN",
   band: "Band",
   broadcast_enabled: "SSID broadcast",
+  built_in_adapter: "Docker adapter",
   cell_id: "Cell ID",
   channel_2g: "2.4 GHz channel",
   channel_5g: "5 GHz channel",
@@ -165,6 +167,7 @@ const detailLabels = {
   custom_firmware_flash: "Custom flash",
   firmware: "Firmware",
   hardware: "Hardware",
+  effective_adapter: "Adapter URL",
   lac: "TAC/LAC",
   manufacturer: "Manufacturer",
   mcc: "MCC",
@@ -240,7 +243,10 @@ function bindControls() {
   els.mapLatitude.addEventListener("input", updateControlState);
   els.mapLongitude.addEventListener("input", updateControlState);
   els.mapRadius.addEventListener("input", updateControlState);
-  els.advancedModemMode.addEventListener("change", updateControlState);
+  els.advancedModemMode.addEventListener("change", () => {
+    ensureAdvancedAdapterDefault();
+    updateControlState();
+  });
   els.advancedModemControlUrl.addEventListener("input", updateControlState);
   els.advancedModemAcknowledge.addEventListener("change", updateControlState);
   els.advancedUploadProfile.addEventListener("change", updateControlState);
@@ -861,17 +867,20 @@ function buildHomelabCards() {
 function buildAdapterGuide() {
   const advanced = state.config?.advanced_modem || {};
   const adapterReady = Boolean(advanced.enabled && advanced.control_url_configured);
+  const defaultUrl = advanced.default_control_url || BUILT_IN_DOCKER_ADAPTER_URL;
   return {
     status: adapterReady ? "ready" : "setup_needed",
     summary:
-      "A local adapter URL is the address of a small HTTP service running on hardware you control. It is not the stock gateway address and it is not a firmware download site.",
+      "Docker can use its built-in local adapter URL automatically. Real firmware backup, cell scan, tower lock, or radio-profile changes still need a hardware-specific bridge.",
     how_to_get_one: [
-      "Choose the device that will physically reach the modem or gateway lab hardware.",
+      "Leave the field blank to use the built-in Docker adapter URL.",
+      "For real modem commands, choose the device that will physically reach the modem or gateway lab hardware.",
       "Install or build a trusted adapter service on that local device.",
-      "Bind it to the LAN only, confirm its health endpoint, then paste its base URL here.",
+      "Bind it to the LAN only, confirm its health endpoint, then paste its base URL only if it is different from the Docker default.",
       "Create a stock backup before any firmware or radio-profile experiment.",
     ],
     examples: [
+      defaultUrl,
       "http://router.local:8080",
       "http://192.168.1.2:8765",
       "http://rooter.lan:8080",
@@ -1119,7 +1128,12 @@ function renderAdvancedModemControls() {
     els.advancedModemMode.value = lab.mode || "disabled";
   }
   if (els.advancedModemControlUrl && document.activeElement !== els.advancedModemControlUrl) {
-    els.advancedModemControlUrl.value = lab.control_url || "";
+    els.advancedModemControlUrl.placeholder = `Auto: ${lab.default_control_url || BUILT_IN_DOCKER_ADAPTER_URL}`;
+    els.advancedModemControlUrl.value =
+      lab.control_url ||
+      (lab.mode && lab.mode !== "disabled"
+        ? lab.default_control_url || BUILT_IN_DOCKER_ADAPTER_URL
+        : "");
   }
   if (els.advancedModemAcknowledge && document.activeElement !== els.advancedModemAcknowledge) {
     els.advancedModemAcknowledge.checked = Boolean(lab.acknowledged);
@@ -1142,6 +1156,10 @@ function renderAdvancedModemControls() {
     els.advancedModemStatus,
     {
       mode: lab.label || "Disabled",
+      effective_adapter:
+        lab.effective_control_url ||
+        (lab.mode && lab.mode !== "disabled" ? BUILT_IN_DOCKER_ADAPTER_URL : ""),
+      built_in_adapter: lab.built_in_adapter_selected,
       upload_profile: lab.upload_priority?.label || "Balanced",
       radio_profile: g4arRadio.label || "Auto",
       cell_lock: capabilityText(capabilities.cell_lock),
@@ -1234,6 +1252,29 @@ function capabilityText(capability) {
 
 function isG4ARLabMode(mode) {
   return mode === "g4ar_unlock_lab" || mode === "g4ar_firmware_lab";
+}
+
+function isAdvancedMode(mode) {
+  return mode && mode !== "disabled";
+}
+
+function effectiveAdvancedControlUrl() {
+  const mode = els.advancedModemMode?.value || "disabled";
+  const value = els.advancedModemControlUrl?.value.trim() || "";
+  if (value) {
+    return value;
+  }
+  return isAdvancedMode(mode) ? BUILT_IN_DOCKER_ADAPTER_URL : "";
+}
+
+function ensureAdvancedAdapterDefault() {
+  if (!els.advancedModemControlUrl) {
+    return;
+  }
+  const mode = els.advancedModemMode?.value || "disabled";
+  if (isAdvancedMode(mode) && !els.advancedModemControlUrl.value.trim()) {
+    els.advancedModemControlUrl.value = BUILT_IN_DOCKER_ADAPTER_URL;
+  }
 }
 
 function renderWifiControls() {
@@ -2104,7 +2145,7 @@ async function refreshClients(onlineLookup) {
 async function saveAdvancedModemSettings() {
   const mode = els.advancedModemMode.value;
   const acknowledged = els.advancedModemAcknowledge.checked;
-  const controlUrl = els.advancedModemControlUrl.value.trim();
+  const controlUrl = effectiveAdvancedControlUrl();
 
   if (mode !== "disabled" && !acknowledged) {
     setActionMessage("Acknowledge the custom firmware and RF compliance warning first.", "error");
@@ -2165,9 +2206,7 @@ async function createG4ARFirmwareBackup() {
     return;
   }
   if (!els.advancedModemControlUrl.value.trim()) {
-    setActionMessage("Configure a local G4AR unlock adapter URL first.", "error");
-    els.advancedModemControlUrl.focus();
-    return;
+    ensureAdvancedAdapterDefault();
   }
 
   await runAction("Creating G4AR stock firmware backup.", async () => {
