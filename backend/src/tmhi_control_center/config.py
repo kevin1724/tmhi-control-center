@@ -5,6 +5,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
 
+from .advanced_modem import (
+    ADVANCED_MODEM_MODES,
+    G4AR_RADIO_PROFILES,
+    UPLOAD_PRIORITY_PROFILES,
+    advanced_modem_summary,
+)
 from .credentials import DEFAULT_MANAGED_ENV_PATH, ManagedEnvFile
 
 
@@ -63,6 +69,13 @@ def _float(
     return value
 
 
+def _optional_float(values: dict[str, str], name: str) -> float | None:
+    raw = os.getenv(name, values.get(name, "")).strip()
+    if not raw:
+        return None
+    return float(raw)
+
+
 @dataclass(slots=True)
 class Settings:
     gateway_host: str = "192.168.12.1"
@@ -73,6 +86,19 @@ class Settings:
     managed_env_path: str = field(default=DEFAULT_MANAGED_ENV_PATH, repr=False)
     gateway_timeout_seconds: float = 15.0
     gateway_user_agent: str = "homeisp/android/2.12.1"
+
+    map_latitude: float | None = None
+    map_longitude: float | None = None
+    map_radius_km: float = 0.8
+    public_ip_location_enabled: bool = True
+    opencellid_api_key: str = field(default="", repr=False)
+    opencellid_api_key_source: str = "none"
+    advanced_modem_mode: str = "disabled"
+    advanced_modem_control_url: str = field(default="", repr=False)
+    advanced_modem_acknowledged: bool = False
+    advanced_upload_profile: str = "balanced"
+    advanced_radio_profile: str = "auto"
+    firmware_backup_dir: str = "/data/firmware-backups"
 
     watchdog_enabled: bool = True
     dry_run: bool = True
@@ -125,6 +151,16 @@ class Settings:
         else:
             gateway_password_source = "none"
 
+        environment_opencellid_key = _read_process_secret("OPENCELLID_API_KEY")
+        saved_opencellid_key = managed_values.get("OPENCELLID_API_KEY", "").strip()
+        opencellid_api_key = saved_opencellid_key or environment_opencellid_key
+        if saved_opencellid_key:
+            opencellid_api_key_source = "saved"
+        elif environment_opencellid_key:
+            opencellid_api_key_source = "environment"
+        else:
+            opencellid_api_key_source = "none"
+
         probe_urls = tuple(
             item.strip()
             for item in _env(
@@ -157,6 +193,46 @@ class Settings:
                 managed_values,
                 "GATEWAY_USER_AGENT",
                 "homeisp/android/2.12.1",
+            ),
+            map_latitude=_optional_float(managed_values, "MAP_LATITUDE"),
+            map_longitude=_optional_float(managed_values, "MAP_LONGITUDE"),
+            map_radius_km=_float(managed_values, "MAP_RADIUS_KM", 0.8, 0.25),
+            public_ip_location_enabled=_bool(
+                managed_values,
+                "PUBLIC_IP_LOCATION_ENABLED",
+                True,
+            ),
+            opencellid_api_key=opencellid_api_key,
+            opencellid_api_key_source=opencellid_api_key_source,
+            advanced_modem_mode=_env(
+                managed_values,
+                "ADVANCED_MODEM_MODE",
+                "disabled",
+            ),
+            advanced_modem_control_url=_env(
+                managed_values,
+                "ADVANCED_MODEM_CONTROL_URL",
+                "",
+            ),
+            advanced_modem_acknowledged=_bool(
+                managed_values,
+                "ADVANCED_MODEM_ACKNOWLEDGED",
+                False,
+            ),
+            advanced_upload_profile=_env(
+                managed_values,
+                "ADVANCED_UPLOAD_PROFILE",
+                "balanced",
+            ),
+            advanced_radio_profile=_env(
+                managed_values,
+                "ADVANCED_RADIO_PROFILE",
+                "auto",
+            ),
+            firmware_backup_dir=_env(
+                managed_values,
+                "FIRMWARE_BACKUP_DIR",
+                "/data/firmware-backups",
             ),
             watchdog_enabled=_bool(managed_values, "WATCHDOG_ENABLED", True),
             dry_run=_bool(managed_values, "DRY_RUN", True),
@@ -221,6 +297,35 @@ class Settings:
             raise ValueError("GATEWAY_HOST cannot be empty")
         if not self.gateway_username:
             raise ValueError("GATEWAY_USERNAME cannot be empty")
+        if self.map_latitude is not None and not -90 <= self.map_latitude <= 90:
+            raise ValueError("MAP_LATITUDE must be between -90 and 90")
+        if self.map_longitude is not None and not -180 <= self.map_longitude <= 180:
+            raise ValueError("MAP_LONGITUDE must be between -180 and 180")
+        if (self.map_latitude is None) != (self.map_longitude is None):
+            raise ValueError("MAP_LATITUDE and MAP_LONGITUDE must be configured together")
+        if self.map_radius_km > 100:
+            raise ValueError("MAP_RADIUS_KM must be 100 or less")
+        if self.advanced_modem_mode not in ADVANCED_MODEM_MODES:
+            raise ValueError(
+                "ADVANCED_MODEM_MODE must be one of "
+                f"{', '.join(sorted(ADVANCED_MODEM_MODES))}"
+            )
+        if self.advanced_upload_profile not in UPLOAD_PRIORITY_PROFILES:
+            raise ValueError(
+                "ADVANCED_UPLOAD_PROFILE must be one of "
+                f"{', '.join(sorted(UPLOAD_PRIORITY_PROFILES))}"
+            )
+        if self.advanced_radio_profile not in G4AR_RADIO_PROFILES:
+            raise ValueError(
+                "ADVANCED_RADIO_PROFILE must be one of "
+                f"{', '.join(sorted(G4AR_RADIO_PROFILES))}"
+            )
+        if self.advanced_modem_control_url:
+            parsed_adapter_url = urlparse(self.advanced_modem_control_url)
+            if parsed_adapter_url.scheme not in {"http", "https"} or not parsed_adapter_url.netloc:
+                raise ValueError("ADVANCED_MODEM_CONTROL_URL must be an http(s) URL")
+        if not self.firmware_backup_dir:
+            raise ValueError("FIRMWARE_BACKUP_DIR cannot be empty")
         if not self.probe_urls:
             raise ValueError("At least one PROBE_URL is required")
         if self.minimum_successful_probes > len(self.probe_urls):
@@ -244,6 +349,17 @@ class Settings:
             "gateway_password_configured": bool(self.gateway_password),
             "gateway_password_source": self.gateway_password_source,
             "gateway_login_saved": self.gateway_password_source == "saved",
+            "map": {
+                "latitude": self.map_latitude,
+                "longitude": self.map_longitude,
+                "radius_km": self.map_radius_km,
+                "public_ip_location_enabled": self.public_ip_location_enabled,
+                "tower_provider": "opencellid",
+                "opencellid_configured": bool(self.opencellid_api_key),
+                "opencellid_api_key_source": self.opencellid_api_key_source,
+            },
+            "advanced_modem": advanced_modem_summary(self),
+            "firmware_backup_dir": self.firmware_backup_dir,
             "watchdog_enabled": self.watchdog_enabled,
             "dry_run": self.dry_run,
             "check_interval_seconds": self.check_interval_seconds,

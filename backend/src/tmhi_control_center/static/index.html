@@ -3,264 +3,762 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
     <title>TMHI Control Center</title>
-    <meta name="theme-color" content="#17231f" />
-    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260724-g4ar-guide" />
   </head>
   <body>
-    <header class="topbar">
-      <div class="topbar__brand">
-        <div>
-          <p class="eyebrow">TMHI Gateway</p>
-          <h1>Control Center</h1>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Primary">
+        <div class="brand-panel">
+          <div class="brand-mark" aria-hidden="true">T</div>
+          <div>
+            <p class="eyebrow">TMHI</p>
+            <strong>Control Center</strong>
+          </div>
         </div>
-      </div>
-      <div class="topbar__status">
-        <button id="tutorialButton" class="button button--secondary button--compact" type="button">
-          Help
-        </button>
-        <span id="phasePill" class="phase-pill phase-pill--unknown">Initializing</span>
-        <span id="updatedAt" class="muted">Not refreshed</span>
-      </div>
-    </header>
 
-    <main class="layout">
-      <section class="panel panel--wide" aria-labelledby="statusHeading">
-        <div class="panel__header">
-          <h2 id="statusHeading">Status</h2>
-          <button id="refreshButton" class="button button--secondary" type="button">
+        <nav class="side-nav" aria-label="Main navigation">
+          <button class="nav-item is-active" type="button" data-view="dashboard">
+            <span class="nav-index">01</span>
+            <span>
+              <strong>Dashboard</strong>
+              <small>Live status</small>
+            </span>
+          </button>
+          <button class="nav-item" type="button" data-view="devices">
+            <span class="nav-index">02</span>
+            <span>
+              <strong>Devices</strong>
+              <small>Wi-Fi and LAN</small>
+            </span>
+          </button>
+          <button class="nav-item" type="button" data-view="map">
+            <span class="nav-index">03</span>
+            <span>
+              <strong>Map</strong>
+              <small>Towers nearby</small>
+            </span>
+          </button>
+          <button class="nav-item" type="button" data-view="diagnostics">
+            <span class="nav-index">04</span>
+            <span>
+              <strong>Diagnostics</strong>
+              <small>Probes and data</small>
+            </span>
+          </button>
+          <button class="nav-item" type="button" data-view="settings">
+            <span class="nav-index">05</span>
+            <span>
+              <strong>Settings</strong>
+              <small>Login and app</small>
+            </span>
+          </button>
+        </nav>
+
+        <div class="sidebar-status">
+          <span id="gatewayReachTag" class="tag tag--muted">Detecting</span>
+          <span id="lastRefresh" class="timestamp">Never refreshed</span>
+          <button id="refreshButton" class="button button--primary" type="button">
             Refresh
           </button>
         </div>
-        <div class="metric-grid">
-          <div class="metric">
-            <span>Internet</span>
-            <strong id="internetValue">Unknown</strong>
+      </aside>
+
+      <div class="main-shell">
+        <header class="topbar">
+          <div class="title-group">
+            <p class="eyebrow">Gateway</p>
+            <h1 id="gatewayIdentity">Gateway dashboard</h1>
+            <p id="gatewaySubtitle" class="muted">Waiting for gateway telemetry</p>
           </div>
-          <div class="metric">
-            <span>Probes</span>
-            <strong id="probeValue">0 / 0</strong>
+          <div class="topbar-actions">
+            <span id="watchdogPhaseTag" class="tag tag--muted">Initializing</span>
+            <button class="button button--secondary button--compact" type="button" data-view="settings">
+              Settings
+            </button>
           </div>
-          <div class="metric">
-            <span>Gateway</span>
-            <strong id="gatewayValue">Unknown</strong>
-          </div>
-          <div class="metric">
-            <span>Dry run</span>
-            <strong id="dryRunValue">Unknown</strong>
-          </div>
-          <div class="metric">
-            <span>Last check</span>
-            <strong id="lastCheckValue">Never</strong>
-          </div>
-          <div class="metric">
-            <span>24h reboots</span>
-            <strong id="rebootValue">0</strong>
-          </div>
-        </div>
-        <div id="lastError" class="alert alert--hidden" role="status"></div>
-      </section>
+        </header>
 
-      <section class="panel" aria-labelledby="controlsHeading">
-        <div class="panel__header">
-          <h2 id="controlsHeading">Controls</h2>
-          <span id="settingsState" class="tag">Checking</span>
-        </div>
+        <main class="dashboard">
+          <div id="errorBanner" class="alert alert--hidden" role="status"></div>
+          <div id="actionMessage" class="message" role="status" aria-live="polite"></div>
 
-        <div class="settings-grid" aria-label="Automation settings">
-          <label class="switch-line" for="dryRunToggle">
-            <span>
-              Dry run
-              <small id="dryRunHint">Test only</small>
-            </span>
-            <input id="dryRunToggle" type="checkbox" checked />
-          </label>
-          <label for="testsPerHour">
-            Tests per hour
-            <input id="testsPerHour" type="number" min="1" max="720" step="1" value="180" />
-          </label>
-          <button id="saveSettingsButton" class="button button--secondary" type="button">
-            Save settings
-          </button>
-        </div>
+          <section
+            id="view-dashboard"
+            class="app-view is-active"
+            data-view-panel="dashboard"
+            aria-labelledby="overviewHeading"
+          >
+            <section class="overview-band">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Live Overview</p>
+                  <h2 id="overviewHeading">Internet and Gateway</h2>
+                </div>
+              </div>
 
-        <div class="login-status">
-          <span>Gateway login</span>
-          <span id="gatewayLoginState" class="tag">Checking</span>
-        </div>
+              <div class="metric-grid">
+                <article class="metric-card">
+                  <span>Internet</span>
+                  <strong id="internetMetric">Unknown</strong>
+                  <small id="internetDetail">No check yet</small>
+                </article>
+                <article class="metric-card">
+                  <span>Gateway</span>
+                  <strong id="gatewayMetric">Unknown</strong>
+                  <small id="gatewayDetail">Local API</small>
+                </article>
+                <article class="metric-card metric-card--accent">
+                  <span>Signal</span>
+                  <strong id="signalScore">--</strong>
+                  <small id="signalQuality">Unknown</small>
+                </article>
+                <article class="metric-card">
+                  <span>Network</span>
+                  <strong id="networkMetric">Unknown</strong>
+                  <small id="networkDetail">Cellular link</small>
+                </article>
+                <article class="metric-card">
+                  <span>Probes</span>
+                  <strong id="probeMetric">0 / 0</strong>
+                  <small id="probeDetail">Required checks</small>
+                </article>
+                <article class="metric-card">
+                  <span>Automation</span>
+                  <strong id="dryRunMetric">Unknown</strong>
+                  <small id="watchdogMetric">Watchdog</small>
+                </article>
+                <article class="metric-card">
+                  <span>Last Check</span>
+                  <strong id="lastCheckMetric">Never</strong>
+                  <small id="lastOnlineMetric">Online history</small>
+                </article>
+                <article class="metric-card">
+                  <span>Reboots</span>
+                  <strong id="rebootMetric">0</strong>
+                  <small>Last 24 hours</small>
+                </article>
+              </div>
+            </section>
 
-        <div id="gatewayPasswordRow" class="secret-row">
-          <label for="gatewayPassword">Gateway admin password</label>
-          <input
-            id="gatewayPassword"
-            type="password"
-            autocomplete="current-password"
-            placeholder="Enter to save or test"
-          />
-        </div>
+            <div class="workspace-grid dashboard-grid">
+              <section
+                class="workspace-section workspace-section--signal"
+                aria-labelledby="signalHeading"
+              >
+                <div class="section-heading">
+                  <div>
+                    <p class="eyebrow">Cellular Radio</p>
+                    <h2 id="signalHeading">Signal Quality</h2>
+                  </div>
+                  <span id="signalStateTag" class="tag tag--muted">Unknown</span>
+                </div>
 
-        <div class="gateway-login-actions">
-          <label class="checkbox-line" for="saveGatewayLogin">
-            <input id="saveGatewayLogin" type="checkbox" checked />
-            Remember
-          </label>
-          <button id="saveGatewayLoginButton" class="button button--primary" type="button">
-            Log in
-          </button>
-          <button id="clearGatewayLoginButton" class="button button--ghost" type="button">
-            Forget
-          </button>
-        </div>
+                <div class="signal-layout">
+                  <div id="signalMeter" class="signal-ring" style="--score: 0">
+                    <div>
+                      <strong id="signalMeterValue">--</strong>
+                      <span id="signalMeterLabel">Unknown</span>
+                    </div>
+                  </div>
+                  <div>
+                    <p id="signalSummary" class="signal-summary">
+                      Gateway signal metrics will appear after the local API responds.
+                    </p>
+                    <div id="signalMetrics" class="mini-metric-grid"></div>
+                  </div>
+                </div>
+              </section>
 
-        <div class="control-grid">
-          <button id="checkButton" class="button button--primary" type="button">
-            Run check
-          </button>
-          <button id="gatewayButton" class="button button--secondary" type="button">
-            Test gateway
-          </button>
-          <label class="checkbox-line" for="forceReboot">
-            <input id="forceReboot" type="checkbox" />
-            Force
-          </label>
-          <button id="rebootButton" class="button button--danger" type="button">
-            Request reboot
-          </button>
-        </div>
+              <section
+                class="workspace-section map-preview-card"
+                aria-labelledby="mapPreviewHeading"
+              >
+                <div class="section-heading">
+                  <div>
+                    <p class="eyebrow">Tower Map</p>
+                    <h2 id="mapPreviewHeading">Serving Cell</h2>
+                  </div>
+                  <span id="mapPreviewTag" class="tag tag--muted">Waiting</span>
+                </div>
+                <div
+                  id="dashboardMapPreview"
+                  class="map-preview-pane"
+                  data-view="map"
+                  role="button"
+                  tabindex="0"
+                  aria-label="Open tower map"
+                ></div>
+                <dl id="mapPreviewDetails" class="detail-list detail-list--compact"></dl>
+              </section>
 
-        <div id="actionMessage" class="message" role="status" aria-live="polite"></div>
-      </section>
+              <section class="workspace-section" aria-labelledby="cellHeading">
+                <div class="section-heading">
+                  <div>
+                    <p class="eyebrow">Cellular Session</p>
+                    <h2 id="cellHeading">Connection Details</h2>
+                  </div>
+                </div>
+                <dl id="connectionDetails" class="detail-list"></dl>
+              </section>
 
-      <section class="panel panel--wide" aria-labelledby="seriesHeading">
-        <div class="panel__header">
-          <h2 id="seriesHeading">Connection Tests</h2>
-          <span id="seriesState" class="tag">Idle</span>
-        </div>
+              <section class="workspace-section" aria-labelledby="deviceHeading">
+                <div class="section-heading">
+                  <div>
+                    <p class="eyebrow">Gateway</p>
+                    <h2 id="deviceHeading">Device Details</h2>
+                  </div>
+                </div>
+                <dl id="deviceDetails" class="detail-list"></dl>
+              </section>
 
-        <form id="seriesForm" class="series-form">
-          <label for="seriesCount">
-            Tests
-            <input id="seriesCount" type="number" min="1" max="30" step="1" value="5" />
-          </label>
-          <label for="seriesInterval">
-            Seconds apart
-            <input
-              id="seriesInterval"
-              type="number"
-              min="0"
-              max="300"
-              step="1"
-              value="10"
-            />
-          </label>
-          <button id="seriesStartButton" class="button button--primary" type="submit">
-            Start tests
-          </button>
-          <button id="seriesStopButton" class="button button--secondary" type="button" disabled>
-            Stop
-          </button>
-        </form>
+              <section class="workspace-section quick-actions" aria-labelledby="quickActionsHeading">
+                <div class="section-heading">
+                  <div>
+                    <p class="eyebrow">Actions</p>
+                    <h2 id="quickActionsHeading">Quick Controls</h2>
+                  </div>
+                </div>
+                <div class="quick-action-grid">
+                  <button id="checkButton" class="button button--secondary" type="button">
+                    Run Check
+                  </button>
+                  <label class="check-row check-row--compact">
+                    <input id="forceReboot" type="checkbox" />
+                    <span>Force reboot</span>
+                  </label>
+                  <button id="rebootButton" class="button button--danger" type="button">
+                    Request Reboot
+                  </button>
+                </div>
+              </section>
+            </div>
+          </section>
 
-        <div class="progress-line">
-          <progress id="seriesProgress" value="0" max="100"></progress>
-          <span id="seriesProgressText">0 / 0 complete</span>
-        </div>
+          <section
+            id="view-devices"
+            class="app-view"
+            data-view-panel="devices"
+            aria-labelledby="devicesHeading"
+          >
+            <div class="view-heading">
+              <div>
+                <p class="eyebrow">LAN</p>
+                <h2 id="devicesHeading">Wi-Fi and Connected Devices</h2>
+              </div>
+              <span id="clientCountTag" class="tag tag--muted">0 devices</span>
+            </div>
 
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Run</th>
-                <th>Time</th>
-                <th>Internet</th>
-                <th>Probes</th>
-                <th>Phase</th>
-              </tr>
-            </thead>
-            <tbody id="seriesResults">
-              <tr>
-                <td colspan="5" class="empty-cell">No test runs yet</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
+            <section class="workspace-section" aria-labelledby="wifiHeading">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Gateway Wi-Fi</p>
+                  <h2 id="wifiHeading">Radio Settings</h2>
+                </div>
+              </div>
 
-      <section class="panel" aria-labelledby="probeHeading">
-        <div class="panel__header">
-          <h2 id="probeHeading">Probe Results</h2>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>URL</th>
-                <th>Status</th>
-                <th>Latency</th>
-              </tr>
-            </thead>
-            <tbody id="probeResults">
-              <tr>
-                <td colspan="3" class="empty-cell">No probes yet</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
+              <div class="device-control-grid">
+                <div class="summary-panel">
+                  <dl id="wifiDetails" class="detail-list"></dl>
+                </div>
 
-      <section class="panel" aria-labelledby="configHeading">
-        <div class="panel__header">
-          <h2 id="configHeading">Configuration</h2>
-        </div>
-        <dl id="configList" class="config-list"></dl>
-      </section>
+                <fieldset class="tool-group">
+                  <legend>Wi-Fi</legend>
+                  <label class="field">
+                    <span>SSID</span>
+                    <input
+                      id="wifiSsid"
+                      type="text"
+                      maxlength="32"
+                      autocomplete="off"
+                      placeholder="Network name"
+                    />
+                  </label>
+                  <label class="switch-row">
+                    <span>Gateway Wi-Fi radios</span>
+                    <input id="wifiRadioToggle" type="checkbox" />
+                  </label>
+                  <button id="saveWifiButton" class="button button--primary" type="button">
+                    Apply Wi-Fi
+                  </button>
+                </fieldset>
+              </div>
+            </section>
 
-      <section class="panel panel--wide" aria-labelledby="eventsHeading">
-        <div class="panel__header">
-          <h2 id="eventsHeading">Events</h2>
-          <button id="eventsButton" class="button button--secondary" type="button">
-            Reload
-          </button>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Kind</th>
-                <th>Message</th>
-              </tr>
-            </thead>
-            <tbody id="eventRows">
-              <tr>
-                <td colspan="3" class="empty-cell">No events loaded</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </main>
+            <section class="workspace-section clients-section" aria-labelledby="clientsHeading">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">LAN Devices</p>
+                  <h2 id="clientsHeading">Connected Devices</h2>
+                </div>
+                <div class="section-actions">
+                  <button id="refreshClientsButton" class="button button--secondary" type="button">
+                    Refresh Clients
+                  </button>
+                  <button id="lookupClientsButton" class="button button--primary" type="button">
+                    Reverse Lookup
+                  </button>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table class="clients-table">
+                  <thead>
+                    <tr>
+                      <th>Device</th>
+                      <th>IP</th>
+                      <th>MAC</th>
+                      <th>Connection</th>
+                      <th>Vendor</th>
+                      <th>Best Guess</th>
+                    </tr>
+                  </thead>
+                  <tbody id="clientTableBody"></tbody>
+                </table>
+              </div>
+            </section>
+          </section>
 
-    <div id="tutorialModal" class="modal modal--hidden" role="dialog" aria-modal="true" aria-labelledby="tutorialHeading">
-      <div class="modal__panel">
-        <div class="modal__header">
-          <h2 id="tutorialHeading">Quick start</h2>
-          <button id="tutorialCloseButton" class="button button--ghost" type="button">
-            Close
-          </button>
-        </div>
-        <ol class="tutorial-list">
-          <li>Save the gateway admin password with Remember checked.</li>
-          <li>Click Test gateway and Run check to confirm the Docker host can reach everything.</li>
-          <li>Leave Dry run on while testing; reboot requests are logged but not sent.</li>
-          <li>When both tests pass, turn Dry run off and save settings.</li>
-        </ol>
-        <button id="tutorialDoneButton" class="button button--primary" type="button">
-          Got it
-        </button>
+          <section
+            id="view-diagnostics"
+            class="app-view"
+            data-view-panel="diagnostics"
+            aria-labelledby="diagnosticsHeading"
+          >
+            <section class="workspace-section diagnostics-section">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Diagnostics</p>
+                  <h2 id="diagnosticsHeading">Data and History</h2>
+                </div>
+              </div>
+
+              <div class="tabs" role="tablist" aria-label="Diagnostics views">
+                <button class="tab is-active" type="button" data-tab="probes">Probes</button>
+                <button class="tab" type="button" data-tab="events">Events</button>
+                <button class="tab" type="button" data-tab="gateway-data">Gateway Data</button>
+                <button class="tab" type="button" data-tab="sweep">Sweep</button>
+              </div>
+
+              <div id="tab-probes" class="tab-panel is-active">
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Probe</th>
+                        <th>Status</th>
+                        <th>Latency</th>
+                        <th>Detail</th>
+                      </tr>
+                    </thead>
+                    <tbody id="probeTableBody"></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div id="tab-events" class="tab-panel">
+                <div id="eventsList" class="event-list"></div>
+              </div>
+
+              <div id="tab-gateway-data" class="tab-panel">
+                <div id="gatewaySections" class="gateway-section-list"></div>
+              </div>
+
+              <div id="tab-sweep" class="tab-panel">
+                <div class="sweep-controls">
+                  <label class="field field--inline">
+                    <span>Runs</span>
+                    <input id="seriesCount" type="number" min="1" max="30" value="5" />
+                  </label>
+                  <label class="field field--inline">
+                    <span>Interval</span>
+                    <input
+                      id="seriesInterval"
+                      type="number"
+                      min="0"
+                      max="300"
+                      step="0.5"
+                      value="5"
+                    />
+                  </label>
+                  <button id="seriesStartButton" class="button button--primary" type="button">
+                    Start Sweep
+                  </button>
+                  <button
+                    id="seriesStopButton"
+                    class="button button--secondary"
+                    type="button"
+                    disabled
+                  >
+                    Stop
+                  </button>
+                </div>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Time</th>
+                        <th>Internet</th>
+                        <th>Probes</th>
+                        <th>Phase</th>
+                      </tr>
+                    </thead>
+                    <tbody id="seriesTableBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+          </section>
+
+          <section
+            id="view-map"
+            class="app-view"
+            data-view-panel="map"
+            aria-labelledby="mapHeading"
+          >
+            <div class="view-heading">
+              <div>
+                <p class="eyebrow">Tower Intelligence</p>
+                <h2 id="mapHeading">Gateway Tower Map</h2>
+              </div>
+              <div class="section-actions">
+                <span id="mapProviderTag" class="tag tag--muted">OpenCellID</span>
+                <span id="mapTowerLockTag" class="tag tag--warn">Tower lock unsupported</span>
+              </div>
+            </div>
+
+            <section class="workspace-section map-workspace" aria-labelledby="towerMapHeading">
+              <div class="map-canvas-wrap">
+                <div class="section-heading">
+                  <div>
+                    <p class="eyebrow">Live Radio View</p>
+                    <h2 id="towerMapHeading">Towers and Gateway Position</h2>
+                  </div>
+                  <button id="mapRefreshButton" class="button button--primary" type="button">
+                    Refresh Towers
+                  </button>
+                </div>
+                <div id="towerMap" class="tower-map"></div>
+              </div>
+
+              <aside class="map-panel" aria-labelledby="towerIdentityHeading">
+                <div>
+                  <p class="eyebrow">Connected Cell</p>
+                  <h3 id="towerIdentityHeading">Tower Identity</h3>
+                </div>
+                <dl id="towerIdentityDetails" class="detail-list"></dl>
+
+                <div class="tower-lock-note">
+                  <strong>Tower selection</strong>
+                  <p>
+                    Stock gateway firmware does not expose a supported command for forcing a
+                    specific tower. Use the map to compare cells, then retest after placement
+                    or antenna changes.
+                  </p>
+                </div>
+
+                <div id="mapStatusMessage" class="message" role="status" aria-live="polite"></div>
+              </aside>
+            </section>
+
+            <section class="workspace-section map-settings-section" aria-labelledby="mapSettingsHeading">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Map Center</p>
+                  <h2 id="mapSettingsHeading">Home Location and Search Radius</h2>
+                </div>
+                <button id="useBrowserLocationButton" class="button button--secondary" type="button">
+                  Use Browser Location
+                </button>
+              </div>
+              <div class="map-form-grid">
+                <label class="field">
+                  <span>Latitude</span>
+                  <input id="mapLatitude" type="number" min="-90" max="90" step="0.000001" />
+                </label>
+                <label class="field">
+                  <span>Longitude</span>
+                  <input id="mapLongitude" type="number" min="-180" max="180" step="0.000001" />
+                </label>
+                <label class="field">
+                  <span>Radius km</span>
+                  <input id="mapRadius" type="number" min="0.25" max="100" step="0.05" />
+                </label>
+                <button id="saveMapCenterButton" class="button button--primary" type="button">
+                  Save Map Center
+                </button>
+              </div>
+            </section>
+
+            <section class="workspace-section" aria-labelledby="nearbyTowerHeading">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Nearby Cells</p>
+                  <h2 id="nearbyTowerHeading">OpenCellID Results</h2>
+                </div>
+                <span id="nearbyTowerCountTag" class="tag tag--muted">0 towers</span>
+              </div>
+              <div class="table-wrap">
+                <table class="tower-table">
+                  <thead>
+                    <tr>
+                      <th>Tower</th>
+                      <th>Radio</th>
+                      <th>Distance</th>
+                      <th>Signal</th>
+                      <th>Accuracy</th>
+                      <th>Samples</th>
+                    </tr>
+                  </thead>
+                  <tbody id="nearbyTowerTableBody"></tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+
+          <section
+            id="view-settings"
+            class="app-view"
+            data-view-panel="settings"
+            aria-labelledby="settingsHeading"
+          >
+            <div class="view-heading">
+              <div>
+                <p class="eyebrow">App Settings</p>
+                <h2 id="settingsHeading">Gateway Login and Preferences</h2>
+              </div>
+              <span id="gatewayLoginState" class="tag tag--muted">Checking</span>
+            </div>
+
+            <div class="settings-grid">
+              <fieldset class="tool-group settings-card settings-card--wide">
+                <legend>Gateway Login</legend>
+                <label class="field">
+                  <span>Admin password</span>
+                  <input
+                    id="gatewayPassword"
+                    type="password"
+                    autocomplete="current-password"
+                    placeholder="Gateway admin password"
+                  />
+                </label>
+                <label class="check-row">
+                  <input id="rememberPassword" type="checkbox" checked />
+                  <span>Remember login</span>
+                </label>
+                <div class="button-row">
+                  <button id="saveGatewayButton" class="button button--primary" type="button">
+                    Save Login
+                  </button>
+                  <button id="forgetGatewayButton" class="button button--secondary" type="button">
+                    Forget
+                  </button>
+                  <button id="gatewayButton" class="button button--secondary" type="button">
+                    Test
+                  </button>
+                </div>
+              </fieldset>
+
+              <fieldset class="tool-group settings-card">
+                <legend>Appearance</legend>
+                <label class="switch-row theme-switch">
+                  <span id="themeModeLabel">Light mode</span>
+                  <input id="darkModeToggle" type="checkbox" />
+                </label>
+                <div class="theme-preview" aria-hidden="true">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              </fieldset>
+
+              <fieldset class="tool-group settings-card">
+                <legend>Tower Data</legend>
+                <label class="field">
+                  <span>OpenCellID API key</span>
+                  <input
+                    id="openCellIdKey"
+                    type="password"
+                    autocomplete="off"
+                    placeholder="Optional tower lookup key"
+                  />
+                </label>
+                <div class="button-row">
+                  <button id="saveOpenCellIdButton" class="button button--primary" type="button">
+                    Save Key
+                  </button>
+                  <button id="clearOpenCellIdButton" class="button button--secondary" type="button">
+                    Clear
+                  </button>
+                </div>
+              </fieldset>
+
+              <fieldset class="tool-group settings-card settings-card--wide">
+                <legend>G4AR Unlock / Radio Lab</legend>
+                <div class="warning-panel">
+                  <strong>Owned hardware research warning</strong>
+                  <p>
+                    This lab is for Arcadyan TMO-G4AR gateways the user owns, such as secondhand
+                    eBay or Amazon units. Firmware override, LTE/NSA radio experiments, modem
+                    commands, and external antenna mods can brick hardware, void warranty, break
+                    service terms, or create RF compliance problems.
+                  </p>
+                </div>
+                <div class="control-grid">
+                  <label class="field">
+                    <span>Control mode</span>
+                    <select id="advancedModemMode">
+                      <option value="disabled">Disabled</option>
+                      <option value="openwrt_rooter">OpenWrt / ROOTer</option>
+                      <option value="modemmanager">ModemManager</option>
+                      <option value="custom_adapter">Custom local adapter</option>
+                      <option value="g4ar_unlock_lab">G4AR unlock / radio lab</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Upload priority</span>
+                    <select id="advancedUploadProfile">
+                      <option value="balanced">Balanced</option>
+                      <option value="prefer_upload">Prefer upload</option>
+                      <option value="low_latency_upload">Low-latency upload</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>G4AR radio profile</span>
+                    <select id="advancedRadioProfile">
+                      <option value="auto">Auto</option>
+                      <option value="prefer_lte_anchor_nsa">Prefer LTE anchor / 5G NSA</option>
+                      <option value="lte_only_test">LTE-only test</option>
+                      <option value="nr_sa">5G Standalone</option>
+                      <option value="scan_only">Scan only</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Local adapter URL</span>
+                    <input
+                      id="advancedModemControlUrl"
+                      type="url"
+                      inputmode="url"
+                      placeholder="http://router.local:8080"
+                    />
+                  </label>
+                </div>
+                <label class="check-row">
+                  <input id="advancedModemAcknowledge" type="checkbox" />
+                  <span>I own this G4AR and accept the firmware override, LTE/NSA experiment, warranty, carrier-term, and RF compliance risk.</span>
+                </label>
+                <dl id="advancedModemStatus" class="detail-list detail-list--compact"></dl>
+                <div class="button-row">
+                  <button id="saveAdvancedModemButton" class="button button--primary" type="button">
+                    Save Unlock Lab
+                  </button>
+                  <a
+                    class="button button--secondary"
+                    href="https://github.com/kevin1724/tmhi-control-center/blob/main/docs/G4AR_FIRMWARE_LAB_GUIDE.md"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open Setup Guide
+                  </a>
+                </div>
+
+                <div class="firmware-backup-panel">
+                  <div>
+                    <strong>Stock firmware backup</strong>
+                    <p>
+                      Uses the configured local adapter to create a backup from this exact
+                      G4AR, then saves the manifest and returned artifacts locally.
+                    </p>
+                  </div>
+                  <button id="firmwareBackupButton" class="button button--secondary" type="button">
+                    Create Stock Backup
+                  </button>
+                  <p id="firmwareBackupStatus" class="inline-status"></p>
+                  <div id="firmwareBackupList" class="backup-list"></div>
+                </div>
+
+                <div class="firmware-gate">
+                  <div class="warning-panel warning-panel--danger">
+                    <strong>G4AR firmware override gate</strong>
+                    <p>
+                      Firmware override can permanently brick the gateway. This project will not
+                      write firmware unless a local adapter proves stock backup, recovery, image
+                      hashes, and exact consent immediately before the operation.
+                    </p>
+                  </div>
+                  <dl id="firmwareLabStatus" class="detail-list detail-list--compact"></dl>
+                  <div class="control-grid">
+                    <label class="field">
+                      <span>Stock backup SHA-256</span>
+                      <input
+                        id="firmwareBackupSha256"
+                        type="text"
+                        inputmode="text"
+                        maxlength="64"
+                        placeholder="64-character backup hash"
+                      />
+                    </label>
+                    <label class="field">
+                      <span>Custom firmware SHA-256</span>
+                      <input
+                        id="firmwareSha256"
+                        type="text"
+                        inputmode="text"
+                        maxlength="64"
+                        placeholder="64-character firmware hash"
+                      />
+                    </label>
+                  </div>
+                  <label class="check-row">
+                    <input id="firmwareBackupVerified" type="checkbox" />
+                    <span>Stock firmware backup is complete and verified.</span>
+                  </label>
+                  <label class="check-row">
+                    <input id="firmwareRecoveryVerified" type="checkbox" />
+                    <span>Recovery and restore path has been tested on this exact G4AR.</span>
+                  </label>
+                  <label class="check-row">
+                    <input id="firmwareUnderstandsRisk" type="checkbox" />
+                    <span>I understand this can permanently brick the gateway.</span>
+                  </label>
+                  <label class="field">
+                    <span>Type consent phrase</span>
+                    <input
+                      id="firmwareConsentPhrase"
+                      type="text"
+                      autocomplete="off"
+                      placeholder="I OWN THIS G4AR - BACKUP VERIFIED - OVERRIDE RISK ACCEPTED"
+                    />
+                  </label>
+                  <button id="firmwareFlashButton" class="button button--danger" type="button">
+                    Arm Override Gate
+                  </button>
+                </div>
+              </fieldset>
+
+              <fieldset class="tool-group settings-card">
+                <legend>Watchdog</legend>
+                <label class="switch-row">
+                  <span>Dry run</span>
+                  <input id="dryRunToggle" type="checkbox" />
+                </label>
+                <label class="field">
+                  <span>Checks per hour</span>
+                  <input id="testFrequency" type="number" min="1" max="720" step="1" />
+                </label>
+                <button id="saveSettingsButton" class="button button--primary" type="button">
+                  Save Settings
+                </button>
+              </fieldset>
+            </div>
+          </section>
+        </main>
       </div>
     </div>
 
-    <script src="/static/app.js" defer></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+    <script src="/static/app.js?v=20260724-g4ar-guide" defer></script>
   </body>
 </html>

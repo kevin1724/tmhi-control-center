@@ -9,7 +9,7 @@ services:
     container_name: tmhi-control-center
     restart: unless-stopped
     ports:
-      - "${WEB_PORT:-8088}:8000"
+      - "${WEB_PORT:-8095}:8000"
     volumes:
       - ../data:/data
     security_opt:

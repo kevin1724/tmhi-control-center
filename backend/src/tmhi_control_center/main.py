@@ -4,7 +4,8 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,11 +14,23 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import __version__
+from .advanced_modem import (
+    G4AR_LAB_MODES,
+    g4ar_firmware_lab_status,
+    validate_flash_consent,
+)
 from .config import Settings
 from .connectivity import ConnectivityChecker
 from .credentials import ManagedEnvFile
-from .gateway import UnifiedGatewayClient
+from .firmware_backup import (
+    FirmwareBackupError,
+    create_g4ar_firmware_backup,
+    list_g4ar_firmware_backups,
+)
+from .gateway import GatewayAuthenticationError, GatewayError, UnifiedGatewayClient
+from .geolocation import PublicIpLocationError, PublicIpLocator
 from .storage import EventStore
+from .towers import build_tower_map_payload
 from .watchdog import Watchdog
 
 
@@ -30,6 +43,7 @@ logger = logging.getLogger(__name__)
 
 store = EventStore(settings.database_path)
 managed_env = ManagedEnvFile(settings.managed_env_path)
+public_ip_locator = PublicIpLocator()
 checker = ConnectivityChecker(
     settings.probe_urls,
     settings.probe_timeout_seconds,
@@ -106,8 +120,71 @@ class SettingsUpdateRequest(BaseModel):
     tests_per_hour: int | None = Field(default=None, ge=1, le=720)
 
 
+class AdvancedModemSettingsUpdateRequest(BaseModel):
+    mode: Literal[
+        "disabled",
+        "openwrt_rooter",
+        "modemmanager",
+        "custom_adapter",
+        "g4ar_unlock_lab",
+        "g4ar_firmware_lab",
+    ] = "disabled"
+    control_url: str | None = Field(default=None, max_length=512)
+    acknowledged: bool = False
+    upload_profile: Literal["balanced", "prefer_upload", "low_latency_upload"] = "balanced"
+    radio_profile: Literal[
+        "auto",
+        "prefer_lte_anchor_nsa",
+        "lte_only_test",
+        "nr_sa",
+        "scan_only",
+    ] = "auto"
+
+
+class G4ARFirmwareFlashRequest(BaseModel):
+    stock_backup_sha256: str = Field(default="", max_length=64)
+    firmware_sha256: str = Field(default="", max_length=64)
+    consent_phrase: str = Field(default="", max_length=128)
+    backup_verified: bool = False
+    recovery_verified: bool = False
+    understands_brick_risk: bool = False
+
+
+class G4ARFirmwareBackupRequest(BaseModel):
+    reason: str = Field(default="ui_request", max_length=80)
+
+
+class MapSettingsUpdateRequest(BaseModel):
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    radius_km: float | None = Field(default=None, ge=0.25, le=100)
+    opencellid_api_key: str | None = Field(default=None, max_length=256, repr=False)
+    clear_opencellid_api_key: bool = False
+    clear_location: bool = False
+
+
+class WifiUpdateRequest(BaseModel):
+    ssid: str | None = Field(default=None, min_length=1, max_length=32)
+    radio_enabled: bool | None = None
+
+
 def _tests_per_hour_to_interval_seconds(tests_per_hour: int) -> int:
     return max(5, round(3600 / tests_per_hour))
+
+
+def _gateway_exception(exc: Exception) -> HTTPException:
+    status_code = 409 if isinstance(exc, GatewayAuthenticationError) else 502
+    return HTTPException(status_code=status_code, detail=str(exc))
+
+
+def _overview_has_location(overview: dict[str, Any]) -> bool:
+    if not overview:
+        return False
+    text = str(overview).lower()
+    return (
+        ("latitude" in text or "'lat'" in text or '"lat"' in text)
+        and ("longitude" in text or "'lon'" in text or '"lon"' in text or "lng" in text)
+    )
 
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -131,6 +208,116 @@ async def status() -> dict[str, Any]:
 @app.get("/api/config")
 async def config() -> dict[str, Any]:
     return settings.safe_summary()
+
+
+@app.get("/api/gateway/overview")
+async def gateway_overview() -> dict[str, Any]:
+    try:
+        return await gateway.overview()
+    except Exception as exc:
+        logger.exception("Gateway overview failed")
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/api/gateway/clients")
+async def gateway_clients(
+    online_lookup: bool = Query(default=False),
+) -> dict[str, Any]:
+    try:
+        return await gateway.connected_devices(online_vendor_lookup=online_lookup)
+    except GatewayError as exc:
+        raise _gateway_exception(exc) from exc
+    except Exception as exc:
+        logger.exception("Gateway client list failed")
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/api/gateway/map")
+async def gateway_map(
+    latitude: float | None = Query(default=None, ge=-90, le=90),
+    longitude: float | None = Query(default=None, ge=-180, le=180),
+    radius_km: float | None = Query(default=None, ge=0.25, le=100),
+    include_nearby: bool = Query(default=False),
+) -> dict[str, Any]:
+    if (latitude is None) != (longitude is None):
+        raise HTTPException(
+            status_code=422,
+            detail="Latitude and longitude must be supplied together",
+        )
+
+    errors: list[str] = []
+    notices: list[str] = []
+    try:
+        overview = await gateway.overview()
+    except Exception as exc:
+        logger.exception("Gateway map overview failed")
+        overview = {}
+        errors.append(f"Gateway telemetry failed: {exc}")
+
+    public_ip_location: dict[str, Any] | None = None
+    if (
+        latitude is None
+        and longitude is None
+        and settings.map_latitude is None
+        and settings.map_longitude is None
+        and settings.public_ip_location_enabled
+        and not _overview_has_location(overview)
+    ):
+        try:
+            public_ip_location = (await public_ip_locator.locate()).to_dict()
+        except PublicIpLocationError as exc:
+            notices.append(f"Public IP location estimate failed: {exc}")
+
+    payload = await build_tower_map_payload(
+        overview,
+        settings=settings,
+        latitude=latitude,
+        longitude=longitude,
+        radius_km=radius_km,
+        public_ip_location=public_ip_location,
+        include_nearby=include_nearby,
+    )
+    payload["errors"] = [*errors, *payload.get("errors", [])]
+    payload["notices"] = [*notices, *payload.get("notices", [])]
+    return payload
+
+
+@app.get("/api/gateway/wifi")
+async def gateway_wifi() -> dict[str, Any]:
+    try:
+        return await gateway.wifi_config()
+    except GatewayError as exc:
+        raise _gateway_exception(exc) from exc
+    except Exception as exc:
+        logger.exception("Gateway Wi-Fi config failed")
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/api/gateway/wifi")
+async def gateway_wifi_update(request: WifiUpdateRequest) -> dict[str, Any]:
+    if request.ssid is None and request.radio_enabled is None:
+        raise HTTPException(status_code=422, detail="No Wi-Fi changes were requested")
+    try:
+        result = await gateway.update_wifi(
+            ssid=request.ssid,
+            radio_enabled=request.radio_enabled,
+        )
+    except GatewayError as exc:
+        raise _gateway_exception(exc) from exc
+    except Exception as exc:
+        logger.exception("Gateway Wi-Fi update failed")
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    await store.record(
+        "wifi_settings_updated",
+        "Gateway Wi-Fi settings updated from dashboard",
+        {
+            "ssid_changed": request.ssid is not None,
+            "radio_enabled": request.radio_enabled,
+            "source": result.get("source"),
+        },
+    )
+    return result
 
 
 @app.post("/api/settings")
@@ -170,6 +357,210 @@ async def update_settings(request: SettingsUpdateRequest) -> dict[str, Any]:
         await store.record(
             "settings_updated",
             "Dashboard settings updated",
+            updated,
+        )
+
+    return settings.safe_summary()
+
+
+@app.post("/api/advanced-modem/settings")
+async def update_advanced_modem_settings(
+    request: AdvancedModemSettingsUpdateRequest,
+) -> dict[str, Any]:
+    control_url = (request.control_url or "").strip()
+    if request.mode != "disabled" and not request.acknowledged:
+        raise HTTPException(
+            status_code=409,
+            detail="Acknowledge the custom firmware and RF compliance warning first",
+        )
+    if control_url:
+        parsed_url = urlparse(control_url)
+        if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+            raise HTTPException(
+                status_code=422,
+                detail="Advanced modem control URL must be an http(s) URL",
+            )
+
+    try:
+        managed_env.set_value("ADVANCED_MODEM_MODE", request.mode)
+        managed_env.set_value("ADVANCED_MODEM_CONTROL_URL", control_url)
+        managed_env.set_value(
+            "ADVANCED_MODEM_ACKNOWLEDGED",
+            str(request.mode != "disabled" and request.acknowledged).lower(),
+        )
+        managed_env.set_value("ADVANCED_UPLOAD_PROFILE", request.upload_profile)
+        managed_env.set_value("ADVANCED_RADIO_PROFILE", request.radio_profile)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Advanced modem settings could not be saved",
+        ) from exc
+
+    settings.advanced_modem_mode = request.mode
+    settings.advanced_modem_control_url = control_url
+    settings.advanced_modem_acknowledged = request.mode != "disabled" and request.acknowledged
+    settings.advanced_upload_profile = request.upload_profile
+    settings.advanced_radio_profile = request.radio_profile
+
+    await store.record(
+        "advanced_modem_settings_updated",
+        "Advanced modem lab settings updated",
+        {
+            "mode": settings.advanced_modem_mode,
+            "control_url_configured": bool(settings.advanced_modem_control_url),
+            "acknowledged": settings.advanced_modem_acknowledged,
+            "upload_profile": settings.advanced_upload_profile,
+            "radio_profile": settings.advanced_radio_profile,
+        },
+    )
+    return settings.safe_summary()
+
+
+@app.get("/api/g4ar/firmware/status")
+async def g4ar_firmware_status() -> dict[str, Any]:
+    return g4ar_firmware_lab_status(settings)
+
+
+@app.get("/api/g4ar/firmware/backups")
+async def g4ar_firmware_backups() -> dict[str, Any]:
+    return list_g4ar_firmware_backups(settings.firmware_backup_dir)
+
+
+@app.post("/api/g4ar/firmware/backup")
+async def g4ar_firmware_backup(request: G4ARFirmwareBackupRequest) -> dict[str, Any]:
+    if settings.advanced_modem_mode not in G4AR_LAB_MODES:
+        raise HTTPException(
+            status_code=409,
+            detail="Select G4AR unlock / radio lab mode before creating a stock backup",
+        )
+    if not settings.advanced_modem_acknowledged:
+        raise HTTPException(
+            status_code=409,
+            detail="Acknowledge the custom firmware and RF compliance warning first",
+        )
+    if not settings.advanced_modem_control_url:
+        raise HTTPException(
+            status_code=409,
+            detail="Configure a local G4AR unlock adapter URL first",
+        )
+
+    try:
+        manifest = await create_g4ar_firmware_backup(settings, reason=request.reason)
+    except FirmwareBackupError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Backup could not be saved: {exc}") from exc
+
+    await store.record(
+        "g4ar_stock_backup_created",
+        "G4AR stock firmware backup saved",
+        {
+            "backup_id": manifest.get("id"),
+            "artifact_count": manifest.get("artifact_count"),
+            "firmware_version": manifest.get("firmware_version"),
+        },
+    )
+    return manifest
+
+
+@app.post("/api/g4ar/firmware/flash")
+async def g4ar_firmware_flash_gate(request: G4ARFirmwareFlashRequest) -> dict[str, Any]:
+    if settings.advanced_modem_mode not in G4AR_LAB_MODES:
+        raise HTTPException(
+            status_code=409,
+            detail="Select G4AR unlock / radio lab mode before preparing a flash operation",
+        )
+    if not settings.advanced_modem_acknowledged:
+        raise HTTPException(
+            status_code=409,
+            detail="Acknowledge the custom firmware and RF compliance warning first",
+        )
+    if not settings.advanced_modem_control_url:
+        raise HTTPException(
+            status_code=409,
+            detail="Configure a local G4AR unlock adapter URL first",
+        )
+
+    request_payload = (
+        request.model_dump() if hasattr(request, "model_dump") else request.dict()
+    )
+    missing = validate_flash_consent(request_payload)
+    if missing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Flash gate is locked. Missing: {', '.join(missing)}",
+        )
+
+    await store.record(
+        "g4ar_flash_gate_validated",
+        "G4AR firmware override consent gate validated",
+        {
+            "stock_backup_sha256": request.stock_backup_sha256,
+            "firmware_sha256": request.firmware_sha256,
+        },
+    )
+    raise HTTPException(
+        status_code=501,
+        detail=(
+            "Flash consent validated, but firmware writing is not implemented until "
+            "a tested local G4AR adapter can verify backup and recovery on this hardware"
+        ),
+    )
+
+
+@app.post("/api/map/settings")
+async def update_map_settings(request: MapSettingsUpdateRequest) -> dict[str, Any]:
+    if (request.latitude is None) != (request.longitude is None):
+        raise HTTPException(
+            status_code=422,
+            detail="Latitude and longitude must be saved together",
+        )
+
+    updated: dict[str, Any] = {}
+
+    try:
+        if request.clear_location:
+            managed_env.clear_value("MAP_LATITUDE")
+            managed_env.clear_value("MAP_LONGITUDE")
+            settings.map_latitude = None
+            settings.map_longitude = None
+            updated["map_location_cleared"] = True
+        elif request.latitude is not None and request.longitude is not None:
+            managed_env.set_value("MAP_LATITUDE", str(request.latitude))
+            managed_env.set_value("MAP_LONGITUDE", str(request.longitude))
+            settings.map_latitude = request.latitude
+            settings.map_longitude = request.longitude
+            updated["map_latitude"] = request.latitude
+            updated["map_longitude"] = request.longitude
+
+        if request.radius_km is not None:
+            managed_env.set_value("MAP_RADIUS_KM", str(request.radius_km))
+            settings.map_radius_km = request.radius_km
+            updated["map_radius_km"] = request.radius_km
+
+        if request.clear_opencellid_api_key:
+            managed_env.clear_value("OPENCELLID_API_KEY")
+            if settings.opencellid_api_key_source != "environment":
+                settings.opencellid_api_key = ""
+                settings.opencellid_api_key_source = "none"
+            updated["opencellid_api_key_cleared"] = True
+        elif request.opencellid_api_key is not None:
+            key = request.opencellid_api_key.strip()
+            if key:
+                managed_env.set_value("OPENCELLID_API_KEY", key)
+                settings.opencellid_api_key = key
+                settings.opencellid_api_key_source = "saved"
+                updated["opencellid_api_key_saved"] = True
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Map settings could not be saved",
+        ) from exc
+
+    if updated:
+        await store.record(
+            "map_settings_updated",
+            "Tower map settings updated",
             updated,
         )
 

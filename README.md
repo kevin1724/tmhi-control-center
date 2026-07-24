@@ -3,58 +3,69 @@
 A fresh control-center scaffold for T-Mobile Home Internet gateway management.
 
 This repo keeps the working backend pieces from the earlier TMHI backend project,
-but it is no longer wired to that original GitHub or container image. Publishing
-is intentionally disabled until the new repository and image names are chosen.
+but it is no longer wired to that original GitHub or container image. The GitHub
+Actions workflow now builds and publishes this project as its own Docker image.
 
 ## Current Scope
 
 - FastAPI backend and built-in browser dashboard
+- Gateway overview API for device, cellular signal, network, Wi-Fi, and redacted
+  advanced gateway data
+- Wi-Fi SSID/radio controls and connected-device discovery with best-effort
+  device identification
+- G4AR Unlock / Radio Lab settings for owned secondhand gateways, with safety
+  gates for adapter-based LTE/NSA, band/cell, backup, and firmware workflows
 - Gateway reachability, login testing, and reboot request support
 - Connectivity probes and reboot safety logic from the previous project
 - SQLite event history
 - Dockerfile and source-build Docker Compose setup
 - Clean backend package layout under `backend/src/tmhi_control_center/`
 
+## Guides
+
+- [G4AR Firmware Lab Guide](docs/G4AR_FIRMWARE_LAB_GUIDE.md) - setup,
+  stock-backup workflow, recovery checklist, and LTE/NSA testing guide.
+
 ## Project Layout
 
 ```text
 tmhi-control-center/
-├── backend/
-│   ├── src/
-│   │   └── tmhi_control_center/
-│   │       ├── static/
-│   │       ├── main.py
-│   │       ├── gateway.py
-│   │       ├── watchdog.py
-│   │       ├── connectivity.py
-│   │       ├── config.py
-│   │       ├── credentials.py
-│   │       ├── storage.py
-│   │       ├── models.py
-│   │       └── cli.py
-│   ├── tests/
-│   ├── pyproject.toml
-│   ├── requirements.txt
-│   └── requirements-dev.txt
-├── android/
-├── web/
-├── deploy/
-├── docs/
-├── .github/
-├── .env.example
-├── .gitignore
-├── Dockerfile
-├── docker-compose.yml
-├── LICENSE
-├── README.md
-├── SECURITY.md
-├── CONTRIBUTING.md
-├── CHANGELOG.md
-└── ACKNOWLEDGEMENTS.md
++-- backend/
+|   +-- src/
+|   |   +-- tmhi_control_center/
+|   |       +-- static/
+|   |       +-- main.py
+|   |       +-- gateway.py
+|   |       +-- watchdog.py
+|   |       +-- connectivity.py
+|   |       +-- config.py
+|   |       +-- credentials.py
+|   |       +-- storage.py
+|   |       +-- models.py
+|   |       +-- cli.py
+|   +-- tests/
+|   +-- pyproject.toml
+|   +-- requirements.txt
+|   +-- requirements-dev.txt
++-- android/
++-- web/
++-- deploy/
++-- docs/
++-- .github/
++-- .env.example
++-- .gitignore
++-- Dockerfile
++-- docker-compose.yml
++-- LICENSE
++-- README.md
++-- SECURITY.md
++-- CONTRIBUTING.md
++-- CHANGELOG.md
++-- ACKNOWLEDGEMENTS.md
 ```
 
 The Python app now lives under `backend/`; the root is reserved for orchestration,
-docs, scripts, Android, and future standalone web work.
+docs, Android, and future standalone web work.
 
 ## Run Locally With Docker
 
@@ -66,7 +77,7 @@ docker compose logs -f tmhi-control-center
 Open:
 
 ```text
-http://localhost:8088/
+http://localhost:8095/
 ```
 
 From another device on your LAN, use the Docker host's LAN IP instead of
@@ -146,7 +157,7 @@ export PYTHONPATH=backend/src
 export DATABASE_PATH=/tmp/tmhi-control-center.db
 export WATCHDOG_ENV_PATH=/tmp/tmhi-control-center.env
 export WATCHDOG_ENABLED=false
-uvicorn tmhi_control_center.main:app --host 0.0.0.0 --port 8088
+uvicorn tmhi_control_center.main:app --host 0.0.0.0 --port 8095
 ```
 
 ## App Icon
@@ -154,7 +165,42 @@ uvicorn tmhi_control_center.main:app --host 0.0.0.0 --port 8088
 The copied favicon, Apple touch icon, web manifest, and PNG app icons were
 removed. Add new branded assets later when the replacement app identity is ready.
 
+## G4AR Unlock / Radio Lab
+
+G4AR Unlock / Radio Lab is for owner-controlled Arcadyan TMO-G4AR gateways,
+such as secondhand eBay or Amazon units. The goal is to support research around
+stock backup, recovery, firmware override, and radio-mode experiments like
+restoring or preferring LTE anchor / 5G NSA when that performs better than pure
+5G Standalone.
+
+Start with the [G4AR Firmware Lab Guide](docs/G4AR_FIRMWARE_LAB_GUIDE.md) before
+enabling this mode.
+
+The app intentionally does not provide transmit-power override controls. Upload
+and download improvements should come from antenna aiming, tower comparison,
+supported LTE/NSA or band/cell profiles, SQM/QoS, and repeated speed/latency
+tests.
+
+For upload preference, the project uses an adapter-facing QoS/SQM profile. That
+means shaping and prioritizing traffic so upload stays responsive under load; it
+does not increase cellular transmit power.
+
+Firmware override is guarded by stock backup, calibration/identity backup,
+SHA-256 hashes, verified recovery path, and exact typed consent before any future
+local adapter is allowed to attempt a flash. The current app validates the
+safety gate but does not write firmware.
+
+T-Mobile publishes G4AR firmware history but not public firmware image
+downloads. The app therefore focuses on creating a local stock backup from the
+user's own gateway through a trusted adapter. In G4AR Unlock / Radio Lab mode,
+the Settings page can request `POST /g4ar/firmware/backup` from the configured
+adapter and saves the returned manifest/artifacts under `FIRMWARE_BACKUP_DIR`
+(`/data/firmware-backups` by default). Adapter-returned inline artifacts must
+include base64 content and, when provided, matching SHA-256 hashes.
+
 ## Disclaimer
 
 TMHI Control Center is an unofficial community project and is not affiliated with,
-endorsed by, or supported by T-Mobile.
+endorsed by, or supported by T-Mobile. Custom firmware, modem commands, and
+external antenna modifications may void warranty, brick hardware, break carrier
+terms, or create RF compliance problems.

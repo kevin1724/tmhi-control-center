@@ -123,6 +123,256 @@ async def test_detect_unified_gateway_model() -> None:
 
 
 @pytest.mark.asyncio
+async def test_gateway_overview_normalizes_signal_and_redacts_private_fields() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/TMI/v1/gateway/")
+        return httpx.Response(
+            200,
+            json={
+                "device": {
+                    "manufacturer": "Arcadyan",
+                    "model": "TMOG4AR",
+                    "friendlyName": "T-Mobile Gateway",
+                    "serialNumber": "SN123456",
+                    "firmwareVersion": "1.2.3",
+                },
+                "connection": {
+                    "connectionStatus": "Connected",
+                    "networkType": "5G",
+                    "band": "n41",
+                    "pci": 123,
+                    "cellId": "cell-abc",
+                    "wanIp": "100.64.1.8",
+                },
+                "signal": {
+                    "rsrp": "-86 dBm",
+                    "rsrq": -9,
+                    "sinr": "19 dB",
+                    "rssi": -68,
+                },
+                "wifi": {
+                    "ssid": "KevinNet",
+                    "wifiPassword": "super-secret",
+                    "connectedClients": 8,
+                },
+            },
+        )
+
+    client = UnifiedGatewayClient(
+        "http://192.168.12.1:8080/TMI/v1",
+        "admin",
+        "secret",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        overview = await client.overview()
+    finally:
+        await client.close()
+
+    assert overview["detection"]["reachable"] is True
+    assert overview["device"]["model"] == "TMOG4AR"
+    assert overview["device"]["firmware"] == "1.2.3"
+    assert overview["connection"]["network_type"] == "5G"
+    assert overview["connection"]["band"] == "n41"
+    assert overview["wifi"]["ssid"] == "KevinNet"
+    assert overview["wifi"]["clients"] == "8"
+    assert overview["signal"]["quality"] in {"Good", "Excellent"}
+    assert overview["signal"]["score"] >= 70
+    assert {metric["key"] for metric in overview["signal"]["metrics"]} >= {
+        "rsrp",
+        "rsrq",
+        "sinr",
+    }
+    rendered = str(overview)
+    assert "super-secret" not in rendered
+    assert "SN123456" not in rendered
+    assert "[redacted]" in rendered
+
+
+@pytest.mark.asyncio
+async def test_connected_devices_extracts_and_identifies_clients() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, json={"auth": {"token": "abc123"}})
+        if request.url.path.endswith("/network/telemetry/"):
+            assert request.url.params["get"] == "clients"
+            assert request.headers["Authorization"] == "Bearer abc123"
+            return httpx.Response(
+                200,
+                json={
+                    "clients": [
+                        {
+                            "macAddress": "AA:BB:CC:11:22:33",
+                            "ipAddress": "192.168.12.44",
+                            "hostName": "Kevin-iPhone-16-Pro",
+                            "vendor": "Apple",
+                            "connectionType": "wifi",
+                            "ssid": "KevinNet",
+                        },
+                        {
+                            "macAddress": "11:22:33:44:55:66",
+                            "ipAddress": "192.168.12.45",
+                            "hostName": "Living-Room-Roku",
+                        },
+                    ]
+                },
+            )
+        return httpx.Response(404)
+
+    client = UnifiedGatewayClient(
+        "http://192.168.12.1:8080/TMI/v1",
+        "admin",
+        "secret",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        clients = await client.connected_devices()
+    finally:
+        await client.close()
+
+    assert clients["count"] == 2
+    iphone = clients["devices"][0]
+    assert iphone["mac_address"] == "AA:BB:CC:xx:xx:xx"
+    assert iphone["mac_oui"] == "AA:BB:CC"
+    assert iphone["vendor"] == "Apple"
+    assert iphone["identification"]["name"] == "Apple iPhone 16 Pro"
+    assert iphone["identification"]["method"] == "hostname_pattern"
+    rendered = str(clients)
+    assert "AA:BB:CC:11:22:33" not in rendered
+
+
+@pytest.mark.asyncio
+async def test_wifi_config_and_update_ssid_and_radios() -> None:
+    requests: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, json={"auth": {"token": "abc123"}})
+        if request.url.path.endswith("/network/configuration/v2"):
+            assert request.headers["Authorization"] == "Bearer abc123"
+            if request.url.params.get("get") == "ap":
+                return httpx.Response(
+                    200,
+                    json={
+                        "ap": [
+                            {
+                                "band": "2.4GHz",
+                                "isRadioEnabled": True,
+                                "isBroadcastEnabled": True,
+                                "ssid": "OldNet",
+                                "password": "hide-me",
+                            },
+                            {
+                                "band": "5GHz",
+                                "isRadioEnabled": True,
+                                "isBroadcastEnabled": True,
+                                "ssid": "OldNet",
+                            },
+                        ]
+                    },
+                )
+            if request.url.params.get("set") == "ap":
+                payload = request.read().decode("utf-8")
+                assert "NewNet" in payload
+                assert "false" in payload
+                return httpx.Response(200, json={"result": "ok"})
+        return httpx.Response(404)
+
+    client = UnifiedGatewayClient(
+        "http://192.168.12.1:8080/TMI/v1",
+        "admin",
+        "secret",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        config = await client.wifi_config()
+        result = await client.update_wifi(ssid="NewNet", radio_enabled=False)
+    finally:
+        await client.close()
+
+    assert config["ssid"] == "OldNet"
+    assert config["radio_enabled"] is True
+    assert "hide-me" not in str(config)
+    assert result["accepted"] is True
+    assert result["changed"] == {
+        "ssid_fields": 2,
+        "radio_enabled_fields": 2,
+        "ssid_enabled_fields": 0,
+        "broadcast_enabled_fields": 2,
+        "radio_enabled": False,
+    }
+    assert any(request.url.params.get("set") == "ap" for request in requests)
+
+
+@pytest.mark.asyncio
+async def test_hintcontrol_wifi_shape_updates_ssids_and_band_radios() -> None:
+    posted_payloads: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, json={"auth": {"token": "abc123"}})
+        if request.url.path.endswith("/network/configuration/v2"):
+            if request.url.params.get("get") == "ap":
+                return httpx.Response(
+                    200,
+                    json={
+                        "2.4ghz": {"isRadioEnabled": True, "channel": "Auto"},
+                        "5.0ghz": {"isRadioEnabled": True, "channel": "Auto"},
+                        "bandSteering": {"isEnabled": True},
+                        "ssids": [
+                            {
+                                "2.4ghzSsid": True,
+                                "5.0ghzSsid": True,
+                                "encryptionMode": "AES",
+                                "encryptionVersion": "WPA2/WPA3",
+                                "guest": False,
+                                "isBroadcastEnabled": True,
+                                "ssidName": "OldNet",
+                                "wpaKey": "hide-me-too",
+                                "enabled": True,
+                            }
+                        ],
+                    },
+                )
+            if request.url.params.get("set") == "ap":
+                posted_payloads.append(request.read().decode("utf-8"))
+                return httpx.Response(200, json={})
+        return httpx.Response(404)
+
+    client = UnifiedGatewayClient(
+        "http://192.168.12.1:8080/TMI/v1",
+        "admin",
+        "secret",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        config = await client.wifi_config()
+        result = await client.update_wifi(ssid="NewNet", radio_enabled=False)
+    finally:
+        await client.close()
+
+    assert config["ssid"] == "OldNet"
+    assert config["radio_enabled"] is True
+    assert config["broadcast_enabled"] is True
+    assert config["radios"][0]["band"] == "2.4 GHz"
+    assert config["ssids"][0]["bands"] == ["2.4 GHz", "5 GHz"]
+    assert "hide-me-too" not in str(config)
+    assert result["changed"] == {
+        "ssid_fields": 1,
+        "radio_enabled_fields": 2,
+        "ssid_enabled_fields": 1,
+        "broadcast_enabled_fields": 1,
+        "radio_enabled": False,
+    }
+    assert posted_payloads
+    assert '"ssidName":"NewNet"' in posted_payloads[0]
+    assert '"isRadioEnabled":false' in posted_payloads[0]
+    assert '"isBroadcastEnabled":false' in posted_payloads[0]
+    assert '"enabled":false' in posted_payloads[0]
+
+
+@pytest.mark.asyncio
 async def test_detect_g5ar_on_http_port_80_gateway_path() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.port == 8080:
