@@ -6,6 +6,15 @@ All notable changes to this new project will be documented here.
 
 ### Added
 
+- Added separate LTE and 5G NR dashboard telemetry with signal power and
+  quality, antenna selection, CQI, bandwidth, PCI, ARFCN, TAC, and cell/node
+  identity where supported by gateway firmware.
+- Added authenticated `/network/telemetry?get=cell` enrichment without making
+  basic gateway telemetry depend on a saved login.
+- Added SQLite-backed gateway telemetry snapshots with 14-day retention and a
+  range-based `/api/gateway/telemetry/history` endpoint.
+- Added responsive RSRP, SINR, and conditional temperature trend charts with
+  1-hour, 6-hour, 24-hour, and 7-day views.
 - Added a Homelab readiness engine and `/api/homelab/snapshot` endpoint for
   setup scoring, next-best-action guidance, signal coaching, local adapter
   instructions, playbook cards, and redacted troubleshooting export.
@@ -21,6 +30,9 @@ All notable changes to this new project will be documented here.
 
 ### Changed
 
+- Reworked the web dashboard into a denser health view with radio mode,
+  temperature availability, uptime, connected-device count, live radio cards,
+  and compact mobile navigation.
 - Updated the dashboard and settings copy to make the local adapter URL easier
   to understand for owner-controlled G4AR firmware/radio lab workflows.
 - Renamed the Python package path to `backend/src/tmhi_control_center/`.

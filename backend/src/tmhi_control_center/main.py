@@ -283,10 +283,23 @@ async def homelab_snapshot(
 @app.get("/api/gateway/overview")
 async def gateway_overview() -> dict[str, Any]:
     try:
-        return await gateway.overview()
+        overview = await gateway.overview()
+        try:
+            await store.record_telemetry(overview)
+        except Exception as exc:
+            logger.warning("Gateway telemetry history could not be recorded: %s", exc)
+        return overview
     except Exception as exc:
         logger.exception("Gateway overview failed")
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/api/gateway/telemetry/history")
+async def gateway_telemetry_history(
+    hours: int = Query(default=6, ge=1, le=336),
+    limit: int = Query(default=720, ge=20, le=2000),
+) -> dict[str, Any]:
+    return await store.telemetry_history(hours=hours, limit=limit)
 
 
 @app.get("/api/gateway/clients")

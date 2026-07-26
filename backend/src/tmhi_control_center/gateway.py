@@ -87,6 +87,13 @@ DEVICE_FIELDS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 CONNECTION_FIELDS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("state", "Connection", ("connectionstatus", "connection_status", "wanstatus", "state")),
     ("network_type", "Network", ("networktype", "network_type", "rat", "access_technology")),
+    (
+        "mode",
+        "Radio mode",
+        ("currentaccesstechnology", "current_access_technology", "radiomode", "networkmode"),
+    ),
+    ("registration", "Registration", ("registration", "registrationstatus")),
+    ("roaming", "Roaming", ("roaming", "roamingstatus")),
     ("operator", "Operator", ("operator", "carrier", "plmnname", "plmn_name")),
     ("plmn", "PLMN", ("plmn", "plmnid", "operatorcode")),
     ("mcc", "MCC", ("mcc", "mobilecountrycode")),
@@ -197,6 +204,10 @@ class UnifiedGatewayClient:
         "/network/telemetry/?get=all",
         "/network/telemetry?get=all",
     )
+    CELL_PATHS = (
+        "/network/telemetry/?get=cell",
+        "/network/telemetry?get=cell",
+    )
     WIFI_CONFIG_PATHS = (
         "/network/configuration/v2?get=ap",
         "/network/configuration?get=ap",
@@ -262,7 +273,23 @@ class UnifiedGatewayClient:
     async def overview(self) -> dict[str, Any]:
         detection, payload = await self._fetch_unified_info()
         if payload is not None:
-            return _build_unified_overview(detection, payload)
+            cell_source: str | None = None
+            cell_payload: dict[str, Any] | None = None
+            try:
+                token = await self.authenticate()
+                cell_source, cell_payload = await self._fetch_authenticated_json(
+                    token,
+                    self.CELL_PATHS,
+                    label="Cell telemetry",
+                )
+            except GatewayError as exc:
+                logger.debug("Advanced cell telemetry is unavailable: %s", exc)
+            return _build_unified_overview(
+                detection,
+                payload,
+                cell_payload=cell_payload,
+                cell_source=cell_source,
+            )
 
         if not detection.reachable:
             nokia = await self._detect_nokia()
@@ -640,6 +667,48 @@ class UnifiedGatewayClient:
             _summarize_errors(errors, "Wi-Fi configuration was not reachable")
         )
 
+    async def _fetch_authenticated_json(
+        self,
+        token: str,
+        paths: tuple[str, ...],
+        *,
+        label: str,
+    ) -> tuple[str, dict[str, Any]]:
+        errors: list[str] = []
+        for base_url in self._ordered_tmi_base_urls():
+            for path in paths:
+                try:
+                    response = await self._client.get(
+                        _endpoint_url(base_url, path),
+                        headers=_auth_headers(token),
+                    )
+                except (httpx.HTTPError, OSError) as exc:
+                    errors.append(f"{base_url}{path}: {type(exc).__name__}: {exc}")
+                    continue
+
+                if not response.is_success:
+                    errors.append(
+                        f"{base_url}{path}: {label} API returned HTTP {response.status_code}"
+                    )
+                    continue
+
+                try:
+                    payload = response.json()
+                except ValueError:
+                    errors.append(f"{base_url}{path}: {label} API returned invalid JSON")
+                    continue
+
+                if not isinstance(payload, dict):
+                    errors.append(f"{base_url}{path}: {label} API returned non-object JSON")
+                    continue
+
+                self._active_tmi_base_url = base_url
+                return path, payload
+
+        raise GatewayUnavailableError(
+            _summarize_errors(errors, f"{label} was not reachable")
+        )
+
     async def _apply_online_vendor_lookup(self, devices: list[dict[str, Any]]) -> None:
         vendors_by_oui: dict[str, str | None] = {}
         for device in devices:
@@ -684,6 +753,11 @@ def _empty_overview(detection: GatewayDetection) -> dict[str, Any]:
         "device": _device_from_detection(detection),
         "connection": {},
         "wifi": {},
+        "radios": [],
+        "system": {
+            "temperature": None,
+            "temperature_exposed": False,
+        },
         "signal": {
             "score": None,
             "quality": "Unknown",
@@ -697,6 +771,9 @@ def _empty_overview(detection: GatewayDetection) -> dict[str, Any]:
 def _build_unified_overview(
     detection: GatewayDetection,
     payload: dict[str, Any],
+    *,
+    cell_payload: dict[str, Any] | None = None,
+    cell_source: str | None = None,
 ) -> dict[str, Any]:
     redacted_payload = _redact_sensitive(payload)
     flattened = list(_flatten_leaves(redacted_payload))
@@ -704,6 +781,27 @@ def _build_unified_overview(
     device = _device_summary(detection, flattened)
     connection = _field_summary(flattened, CONNECTION_FIELDS)
     wifi = _field_summary(flattened, WIFI_FIELDS)
+    safe_cell_payload = _redact_sensitive(cell_payload) if cell_payload else None
+    radios = _radio_summaries(redacted_payload, safe_cell_payload)
+    active_radio_scores = [
+        radio["score"]
+        for radio in radios
+        if radio.get("active") is not False and radio.get("score") is not None
+    ]
+    if active_radio_scores:
+        signal["score"] = round(sum(active_radio_scores) / len(active_radio_scores))
+        signal["quality"] = _quality_from_score(signal["score"])
+        labels = ", ".join(radio["label"] for radio in radios if radio.get("active") is not False)
+        signal["summary"] = f"Combined radio health across {labels}"
+    signal["radio_scores"] = {
+        radio["key"]: radio.get("score") for radio in radios if radio.get("score") is not None
+    }
+    _enrich_connection_from_radios(connection, radios)
+    system = _system_summary(redacted_payload, safe_cell_payload)
+
+    sections_payload = dict(redacted_payload)
+    if safe_cell_payload:
+        sections_payload["advanced_cell"] = safe_cell_payload
 
     return {
         "observed_at": utc_now().isoformat(),
@@ -711,9 +809,326 @@ def _build_unified_overview(
         "device": device,
         "connection": connection,
         "wifi": wifi,
+        "radios": radios,
+        "system": system,
+        "telemetry": {
+            "advanced_cell_available": bool(safe_cell_payload),
+            "advanced_cell_source": cell_source,
+        },
         "signal": signal,
-        "sections": _sections_from_payload(redacted_payload),
+        "sections": _sections_from_payload(sections_payload),
     }
+
+
+def _radio_summaries(
+    payload: dict[str, Any],
+    cell_payload: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    signal_root = _mapping_child(payload, ("signal",))
+    cell_root = _mapping_child(cell_payload or {}, ("cell",)) or (cell_payload or {})
+    definitions = (
+        ("lte", "4G LTE", ("4g", "lte"), "EARFCN", "eNBID"),
+        ("nr", "5G NR", ("5g", "nr", "nr5g"), "NR-ARFCN", "gNBID"),
+    )
+    radios: list[dict[str, Any]] = []
+    for key, label, aliases, arfcn_label, node_label in definitions:
+        basic = _mapping_child(signal_root, aliases)
+        advanced = _mapping_child(cell_root, aliases)
+        sector = _mapping_child(advanced, ("sector",))
+
+        metrics: list[dict[str, Any]] = []
+        for metric_definition in SIGNAL_METRICS:
+            value, source_name = _radio_value(
+                metric_definition["candidates"],
+                (("cell.sector", sector), ("gateway.signal", basic), ("cell", advanced)),
+            )
+            if not _has_meaningful_value(value):
+                continue
+            number = _number_or_none(value)
+            score = _metric_score(metric_definition["kind"], number)
+            metrics.append(
+                {
+                    "key": metric_definition["key"],
+                    "label": metric_definition["label"],
+                    "value": number if number is not None else value,
+                    "display": _format_metric_value(
+                        value,
+                        number,
+                        metric_definition["unit"],
+                    ),
+                    "unit": metric_definition["unit"],
+                    "score": score,
+                    "rating": _rating_from_score(score),
+                    "source": source_name,
+                }
+            )
+
+        cqi, cqi_source = _radio_value(
+            ("cqi", "channelqualityindicator"),
+            (("cell", advanced), ("cell.sector", sector), ("gateway.signal", basic)),
+        )
+        if _has_meaningful_value(cqi):
+            cqi_number = _number_or_none(cqi)
+            cqi_score = _metric_score("cqi", cqi_number)
+            metrics.append(
+                {
+                    "key": "cqi",
+                    "label": "CQI",
+                    "value": cqi_number if cqi_number is not None else cqi,
+                    "display": _format_metric_value(cqi, cqi_number, ""),
+                    "unit": "",
+                    "score": cqi_score,
+                    "rating": _rating_from_score(cqi_score),
+                    "source": cqi_source,
+                }
+            )
+
+        bands_value, _ = _radio_value(
+            ("bands", "band"),
+            (("gateway.signal", basic), ("cell.sector", sector), ("cell", advanced)),
+        )
+        bands = _string_list(bands_value)
+        supported_value, _ = _radio_value(
+            ("supportedbands", "supported_bands"),
+            (("cell", advanced),),
+        )
+        supported_bands = _string_list(supported_value)
+        status_value, _ = _radio_value(("status", "enabled"), (("cell", advanced),))
+        status = _bool_or_none(status_value)
+        antenna, _ = _radio_value(
+            ("antennaused", "antenna_used", "antennamode", "antenna"),
+            (("gateway.signal", basic), ("cell.sector", sector), ("cell", advanced)),
+        )
+        cell_id, _ = _radio_value(
+            ("cid", "cellid", "cell_id"),
+            (("gateway.signal", basic), ("cell.sector", sector), ("cell", advanced)),
+        )
+        node_candidates = (
+            ("enbid", "e_nbid", "nbid") if key == "lte" else ("gnbid", "g_nbid", "nbid")
+        )
+        node_id, _ = _radio_value(
+            node_candidates,
+            (("gateway.signal", basic), ("cell.sector", sector), ("cell", advanced)),
+        )
+        arfcn, _ = _radio_value(
+            ("nrarfcn", "nr_arfcn", "earfcn") if key == "nr" else ("earfcn", "lteearfcn"),
+            (("cell", advanced), ("cell.sector", sector)),
+        )
+
+        cell = {
+            "band": ", ".join(bands) if bands else None,
+            "bands": bands,
+            "bandwidth": _radio_scalar(("bandwidth", "channelbandwidth"), advanced, sector),
+            "pci": _radio_scalar(("pci", "physicalcellid"), advanced, sector),
+            "arfcn": _format_optional(arfcn),
+            "arfcn_label": arfcn_label,
+            "ecgi": _radio_scalar(("ecgi", "cgi"), advanced, sector),
+            "tac": _radio_scalar(("tac", "trackingareacode"), advanced, sector),
+            "mcc": _radio_scalar(("mcc", "mobilecountrycode"), advanced),
+            "mnc": _radio_scalar(("mnc", "mobilenetworkcode"), advanced),
+            "plmn": _radio_scalar(("plmn", "plmnname"), advanced),
+            "cell_id": _format_optional(cell_id),
+            "node_id": _format_optional(node_id),
+            "node_label": node_label,
+            "supported_bands": supported_bands,
+        }
+        cell = {field: value for field, value in cell.items() if _has_meaningful_value(value)}
+        if "arfcn" not in cell:
+            cell.pop("arfcn_label", None)
+        if "node_id" not in cell:
+            cell.pop("node_label", None)
+        has_signal = any(metric["key"] in {"rsrp", "rsrq", "sinr", "rssi"} for metric in metrics)
+        has_data = bool(metrics or cell or _has_meaningful_value(antenna))
+        if not has_data:
+            continue
+
+        active = status if status is not None else has_signal
+        score_values = [metric["score"] for metric in metrics if metric["score"] is not None]
+        score = round(sum(score_values) / len(score_values)) if score_values else None
+        radios.append(
+            {
+                "key": key,
+                "label": label,
+                "active": active,
+                "status": status,
+                "score": score,
+                "quality": _quality_from_score(score),
+                "antenna": _format_optional(antenna),
+                "metrics": metrics,
+                "cell": cell,
+            }
+        )
+    return radios
+
+
+def _mapping_child(mapping: dict[str, Any], candidates: tuple[str, ...]) -> dict[str, Any]:
+    normalized_candidates = {_normalize_key(candidate) for candidate in candidates}
+    for key, value in mapping.items():
+        if _normalize_key(key) in normalized_candidates and isinstance(value, dict):
+            return value
+    return {}
+
+
+def _radio_value(
+    candidates: tuple[str, ...],
+    sources: tuple[tuple[str, dict[str, Any]], ...],
+) -> tuple[Any, str | None]:
+    for source_name, source in sources:
+        if not source:
+            continue
+        value = _find_mapping_value(source, candidates, exact=True)
+        if _has_meaningful_value(value):
+            return value, source_name
+    return None, None
+
+
+def _radio_scalar(candidates: tuple[str, ...], *sources: dict[str, Any]) -> str | None:
+    value, _ = _radio_value(candidates, tuple(("cell", source) for source in sources))
+    return _format_optional(value)
+
+
+def _string_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [
+            _format_scalar(item)
+            for item in value
+            if _has_meaningful_value(item)
+        ]
+    if not _has_meaningful_value(value):
+        return []
+    text = _format_scalar(value)
+    return [item.strip() for item in re.split(r"[,;/]", text) if item.strip()]
+
+
+def _enrich_connection_from_radios(
+    connection: dict[str, Any],
+    radios: list[dict[str, Any]],
+) -> None:
+    active_keys = {
+        str(radio.get("key"))
+        for radio in radios
+        if radio.get("active") is not False
+    }
+    if not connection.get("mode"):
+        if {"lte", "nr"}.issubset(active_keys):
+            connection["mode"] = "LTE + 5G NR"
+        elif "nr" in active_keys:
+            connection["mode"] = "5G NR"
+        elif "lte" in active_keys:
+            connection["mode"] = "4G LTE"
+
+    preferred = next(
+        (radio for radio in radios if radio.get("key") == "nr" and radio.get("active") is not False),
+        None,
+    ) or next((radio for radio in radios if radio.get("active") is not False), None)
+    if not preferred:
+        return
+    cell = preferred.get("cell") if isinstance(preferred.get("cell"), dict) else {}
+    for target, source in (
+        ("band", "band"),
+        ("pci", "pci"),
+        ("tac", "tac"),
+        ("cell_id", "cell_id"),
+        ("mcc", "mcc"),
+        ("mnc", "mnc"),
+        ("plmn", "plmn"),
+    ):
+        if not connection.get(target) and cell.get(source):
+            connection[target] = cell[source]
+    arfcn = cell.get("arfcn")
+    if arfcn:
+        connection["nr_arfcn" if preferred.get("key") == "nr" else "earfcn"] = arfcn
+
+
+def _system_summary(
+    payload: dict[str, Any],
+    cell_payload: dict[str, Any] | None,
+) -> dict[str, Any]:
+    combined = list(_flatten_leaves(payload))
+    if cell_payload:
+        combined.extend(_flatten_leaves(cell_payload, ("advanced_cell",)))
+
+    temperature_match = _find_exact_value(
+        combined,
+        (
+            "temperaturec",
+            "temperature_c",
+            "devicetemperature",
+            "cputemperature",
+            "modemtemperature",
+            "temperature",
+        ),
+    )
+    temperature = None
+    if temperature_match:
+        path, raw_temperature = temperature_match
+        number = _number_or_none(raw_temperature)
+        if number is not None:
+            source_text = ".".join(path)
+            raw_text = str(raw_temperature).lower()
+            if "fahrenheit" in source_text.lower() or " f" in raw_text:
+                celsius = (number - 32) * 5 / 9
+            elif number > 1000:
+                celsius = number / 1000
+            else:
+                celsius = number
+            temperature = {
+                "celsius": round(celsius, 1),
+                "fahrenheit": round((celsius * 9 / 5) + 32, 1),
+                "display": f"{_format_number(round(celsius, 1))} C",
+                "source": source_text,
+            }
+
+    time_root = _mapping_child(payload, ("time",))
+    signal_root = _mapping_child(payload, ("signal",))
+    generic = _mapping_child(signal_root, ("generic",))
+    device_root = _mapping_child(payload, ("device",))
+    uptime_value = _find_mapping_value(time_root, ("uptime", "up_time"), exact=True)
+    uptime_seconds = _number_or_none(uptime_value)
+    local_time = _find_mapping_value(time_root, ("localtime", "local_time"), exact=True)
+    timezone_value = _find_mapping_value(
+        time_root,
+        ("localtimezone", "local_time_zone", "timezone"),
+        exact=True,
+    )
+
+    summary: dict[str, Any] = {
+        "temperature": temperature,
+        "temperature_exposed": temperature is not None,
+        "uptime_seconds": round(uptime_seconds) if uptime_seconds is not None else None,
+        "uptime": _format_duration(uptime_seconds) if uptime_seconds is not None else None,
+        "local_time": _format_optional(local_time),
+        "timezone": _format_optional(timezone_value),
+        "registration": _format_optional(
+            _find_mapping_value(generic, ("registration",), exact=True)
+        ),
+        "roaming": _bool_or_none(_find_mapping_value(generic, ("roaming",), exact=True)),
+        "ipv6": _bool_or_none(
+            _find_mapping_value(generic, ("hasipv6", "has_ipv6"), exact=True)
+        ),
+        "gateway_enabled": _bool_or_none(
+            _find_mapping_value(device_root, ("isenabled", "enabled"), exact=True)
+        ),
+        "mesh_supported": _bool_or_none(
+            _find_mapping_value(device_root, ("ismeshsupported",), exact=True)
+        ),
+        "update_state": _format_optional(
+            _find_mapping_value(device_root, ("updatestate",), exact=True)
+        ),
+    }
+    return summary
+
+
+def _format_duration(seconds: float) -> str:
+    total_seconds = max(0, round(seconds))
+    days, remainder = divmod(total_seconds, 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes, _ = divmod(remainder, 60)
+    if days:
+        return f"{days}d {hours}h {minutes}m"
+    if hours:
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m"
 
 
 def _build_wifi_config(
@@ -1389,6 +1804,19 @@ def _find_value(
     return None
 
 
+def _find_exact_value(
+    flattened: list[tuple[tuple[str, ...], Any]],
+    candidates: tuple[str, ...],
+) -> tuple[tuple[str, ...], Any] | None:
+    normalized_candidates = {_normalize_key(candidate) for candidate in candidates}
+    for path, value in flattened:
+        if not path or not _has_meaningful_value(value):
+            continue
+        if _normalize_key(path[-1]) in normalized_candidates:
+            return path, value
+    return None
+
+
 def _redact_sensitive(value: Any, *, key: str = "") -> Any:
     if _is_sensitive_key(key):
         return "[redacted]"
@@ -1472,6 +1900,8 @@ def _metric_score(kind: str, value: float | None) -> int | None:
         if value <= 5:
             return max(0, min(100, round((value / 5) * 100)))
         return max(0, min(100, round(value)))
+    if kind == "cqi":
+        return max(0, min(100, round((value / 15) * 100)))
     return None
 
 
@@ -1565,6 +1995,8 @@ def _has_meaningful_value(value: Any) -> bool:
         return False
     if isinstance(value, str):
         return bool(value.strip())
+    if isinstance(value, (list, tuple, dict, set)):
+        return bool(value)
     return True
 
 

@@ -2,6 +2,7 @@ import base64
 import hashlib
 import importlib
 import sys
+from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
 
@@ -62,7 +63,7 @@ def test_gateway_overview_endpoint(monkeypatch, tmp_path) -> None:
     class FakeGateway:
         async def overview(self):
             return {
-                "observed_at": "2026-07-24T00:00:00+00:00",
+                "observed_at": datetime.now(timezone.utc).isoformat(),
                 "detection": {"reachable": True, "api_type": "unified"},
                 "signal": {"score": 88, "quality": "Excellent", "metrics": []},
                 "device": {"model": "TMOG4AR"},
@@ -79,12 +80,16 @@ def test_gateway_overview_endpoint(monkeypatch, tmp_path) -> None:
         main.gateway = FakeGateway()
         try:
             response = client.get("/api/gateway/overview")
+            history_response = client.get("/api/gateway/telemetry/history?hours=6")
         finally:
             main.gateway = original_gateway
 
     assert response.status_code == 200
     assert response.json()["signal"]["score"] == 88
     assert response.json()["device"]["model"] == "TMOG4AR"
+    assert history_response.status_code == 200
+    assert history_response.json()["count"] == 1
+    assert history_response.json()["points"][0]["signal_score"] == 88
 
 
 def test_gateway_clients_endpoint(monkeypatch, tmp_path) -> None:

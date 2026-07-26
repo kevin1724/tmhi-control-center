@@ -15,6 +15,8 @@ const state = {
   events: [],
   firmwareBackups: null,
   mapData: null,
+  telemetryHistory: null,
+  telemetryHours: 6,
   activeView: DEFAULT_VIEW,
   theme: "light",
   refreshing: false,
@@ -34,6 +36,7 @@ const state = {
 
 const ids = [
   "actionMessage",
+  "advancedCellTag",
   "adapterEndpointList",
   "adapterExampleList",
   "adapterGuideSummary",
@@ -50,6 +53,8 @@ const ids = [
   "clearOpenCellIdButton",
   "clientCountTag",
   "clientTableBody",
+  "connectedDetail",
+  "connectedMetric",
   "connectionDetails",
   "darkModeToggle",
   "dashboardMapPreview",
@@ -105,14 +110,15 @@ const ids = [
   "mapRefreshButton",
   "mapStatusMessage",
   "mapTowerLockTag",
-  "networkDetail",
-  "networkMetric",
   "nearbyTowerCountTag",
   "nearbyTowerTableBody",
   "openCellIdKey",
   "probeDetail",
   "probeMetric",
   "probeTableBody",
+  "radioCards",
+  "radioModeDetail",
+  "radioModeMetric",
   "rebootButton",
   "rebootMetric",
   "refreshButton",
@@ -137,11 +143,21 @@ const ids = [
   "signalScore",
   "signalStateTag",
   "signalSummary",
+  "sinrTrendChart",
   "skipStockBackupReminder",
+  "rsrpTrendChart",
+  "telemetryFreshness",
+  "telemetryHistoryTag",
+  "temperatureDetail",
+  "temperatureMetric",
+  "temperatureTrendChart",
+  "temperatureTrendPanel",
   "testFrequency",
   "themeModeLabel",
   "towerMap",
   "towerIdentityDetails",
+  "uptimeDetail",
+  "uptimeMetric",
   "useBrowserLocationButton",
   "watchdogMetric",
   "watchdogPhaseTag",
@@ -176,6 +192,7 @@ const detailLabels = {
   model: "Model",
   name: "Name",
   network_type: "Network",
+  mode: "Radio mode",
   operator: "Operator",
   pci: "PCI",
   plmn: "PLMN",
@@ -183,6 +200,8 @@ const detailLabels = {
   radio_enabled: "Gateway Wi-Fi radios",
   radio_profile: "G4AR radio profile",
   radio_mode_override: "Radio override",
+  registration: "Registration",
+  roaming: "Roaming",
   lte_anchor_override: "LTE anchor / NSA",
   stock_firmware_backup: "Stock backup",
   stock_backup_skipped: "Backup reminder",
@@ -277,6 +296,14 @@ function bindControls() {
   document.querySelectorAll(".tab").forEach((button) => {
     button.addEventListener("click", () => selectTab(button.dataset.tab));
   });
+  document.querySelectorAll("[data-telemetry-hours]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const hours = Number(button.dataset.telemetryHours);
+      if (Number.isFinite(hours)) {
+        refreshTelemetryHistory(hours);
+      }
+    });
+  });
 }
 
 function initializeTheme() {
@@ -346,6 +373,7 @@ async function refreshAll({ quiet = false } = {}) {
     api("/api/gateway/map?include_nearby=false"),
     api("/api/events?limit=10"),
     api("/api/g4ar/firmware/backups"),
+    api(`/api/gateway/telemetry/history?hours=${state.telemetryHours}`),
   ]);
 
   const errors = [];
@@ -389,6 +417,11 @@ async function refreshAll({ quiet = false } = {}) {
   } else {
     errors.push(`Backups: ${results[7].reason.message}`);
   }
+  if (results[8].status === "fulfilled") {
+    state.telemetryHistory = results[8].value;
+  } else {
+    errors.push(`History: ${results[8].reason.message}`);
+  }
 
   renderAll();
   setText(els.lastRefresh, `Updated ${formatTime(new Date())}`);
@@ -397,6 +430,19 @@ async function refreshAll({ quiet = false } = {}) {
   }
   state.refreshing = false;
   updateControlState();
+}
+
+async function refreshTelemetryHistory(hours) {
+  state.telemetryHours = Math.max(1, Math.min(336, Number(hours) || 6));
+  renderTelemetryTrends();
+  try {
+    state.telemetryHistory = await api(
+      `/api/gateway/telemetry/history?hours=${state.telemetryHours}`
+    );
+    renderTelemetryTrends();
+  } catch (error) {
+    showError(`Telemetry history: ${error.message}`);
+  }
 }
 
 async function downloadSnapshot() {
@@ -472,6 +518,8 @@ function readError(payload, status) {
 function renderAll() {
   renderHeader();
   renderOverviewMetrics();
+  renderRadioStack();
+  renderTelemetryTrends();
   renderSignal();
   renderDetails();
   renderControls();
@@ -516,6 +564,7 @@ function renderOverviewMetrics() {
   const detection = overview.detection || {};
   const signal = overview.signal || {};
   const connection = overview.connection || {};
+  const system = overview.system || {};
 
   setText(els.internetMetric, booleanLabel(status.internet_online, "Online", "Offline"));
   setTone(els.internetMetric, toneFromBoolean(status.internet_online));
@@ -536,9 +585,30 @@ function renderOverviewMetrics() {
   setTone(els.signalScore, toneFromQuality(signal.quality));
   setText(els.signalQuality, signal.quality || "Unknown");
 
-  setText(els.networkMetric, connection.network_type || "Unknown");
-  setTone(els.networkMetric, connection.network_type ? "info" : "muted");
-  setText(els.networkDetail, compactJoin([connection.operator, connection.band]) || "Cellular link");
+  const mode = connection.mode || connection.network_type || "Unknown";
+  setText(els.radioModeMetric, mode);
+  setTone(els.radioModeMetric, mode === "Unknown" ? "muted" : "info");
+  setText(
+    els.radioModeDetail,
+    compactJoin([connection.operator, connection.band]) || "Cellular link"
+  );
+
+  const temperature = system.temperature;
+  setText(els.temperatureMetric, temperature?.display || "--");
+  setTone(els.temperatureMetric, thermalTone(temperature?.celsius));
+  setText(
+    els.temperatureDetail,
+    temperature ? `${formatValue(temperature.fahrenheit)} F` : "Not exposed by firmware"
+  );
+
+  setText(els.uptimeMetric, system.uptime || connection.uptime || "--");
+  setTone(els.uptimeMetric, system.uptime || connection.uptime ? "good" : "muted");
+  setText(els.uptimeDetail, system.update_state ? `Update ${system.update_state}` : "Gateway runtime");
+
+  const clientCount = state.clients?.count ?? state.clients?.devices?.length ?? 0;
+  setText(els.connectedMetric, String(clientCount));
+  setTone(els.connectedMetric, clientCount ? "info" : "muted");
+  setText(els.connectedDetail, clientCount === 1 ? "Connected client" : "Connected clients");
 
   const probes = `${status.successful_probes || 0} / ${status.total_probes || 0}`;
   setText(els.probeMetric, probes);
@@ -552,7 +622,10 @@ function renderOverviewMetrics() {
   setTone(els.dryRunMetric, status.dry_run ? "warn" : "good");
   setText(els.watchdogMetric, status.watchdog_enabled ? "Watchdog enabled" : "Watchdog off");
 
-  setText(els.lastCheckMetric, formatDate(status.last_check_at) || "Never");
+  setText(
+    els.lastCheckMetric,
+    status.last_check_at ? formatTime(new Date(status.last_check_at)) : "Never"
+  );
   setText(els.lastOnlineMetric, status.last_online_at ? `Online ${formatDate(status.last_online_at)}` : "Online history");
 
   setText(els.rebootMetric, String(status.reboot_count_24h || 0));
@@ -1022,6 +1095,326 @@ function toneFromReadiness(readiness) {
     return "bad";
   }
   return "warn";
+}
+
+function renderRadioStack() {
+  const radios = Array.isArray(state.overview?.radios) ? state.overview.radios : [];
+  const advanced = Boolean(state.overview?.telemetry?.advanced_cell_available);
+  setTag(
+    els.advancedCellTag,
+    advanced ? "Advanced cell data" : "Basic telemetry",
+    advanced ? "good" : "muted"
+  );
+  setText(
+    els.telemetryFreshness,
+    state.overview?.observed_at ? `Sampled ${formatDate(state.overview.observed_at)}` : "Waiting for data"
+  );
+
+  replaceChildren(els.radioCards);
+  if (!radios.length) {
+    els.radioCards.append(emptyNode("No LTE or 5G radio blocks were returned by this firmware."));
+    return;
+  }
+
+  for (const radio of radios) {
+    const card = document.createElement("article");
+    card.className = `radio-status-card radio-status-card--${radio.key || "unknown"}`;
+
+    const header = document.createElement("div");
+    header.className = "radio-card-header";
+    const titleGroup = document.createElement("div");
+    const eyebrow = document.createElement("span");
+    eyebrow.textContent = radio.active === false ? "Not registered" : "Active radio";
+    const title = document.createElement("h3");
+    title.textContent = radio.label || humanize(radio.key);
+    titleGroup.append(eyebrow, title);
+    const quality = document.createElement("span");
+    quality.className = `tag tag--${toneFromQuality(radio.quality)}`;
+    quality.textContent = Number.isFinite(radio.score)
+      ? `${radio.score}% ${radio.quality || ""}`.trim()
+      : radio.active === false
+        ? "Idle"
+        : "Connected";
+    header.append(titleGroup, quality);
+
+    const metricGrid = document.createElement("div");
+    metricGrid.className = "radio-metric-grid";
+    const metrics = Array.isArray(radio.metrics) ? radio.metrics : [];
+    for (const metric of metrics) {
+      const metricNode = document.createElement("div");
+      metricNode.className = `radio-metric radio-metric--${toneFromQuality(metric.rating)}`;
+      const label = document.createElement("span");
+      label.textContent = metric.label || humanize(metric.key);
+      const value = document.createElement("strong");
+      value.textContent = metric.display || formatValue(metric.value);
+      metricNode.append(label, value);
+      metricGrid.append(metricNode);
+    }
+
+    const facts = document.createElement("dl");
+    facts.className = "radio-fact-grid";
+    const cell = radio.cell && typeof radio.cell === "object" ? radio.cell : {};
+    const factEntries = [
+      ["Band", cell.band],
+      ["Bandwidth", cell.bandwidth],
+      ["Antenna", radio.antenna],
+      ["PCI", cell.pci],
+      [cell.arfcn_label || "Channel", cell.arfcn],
+      ["Cell ID", cell.cell_id],
+      [cell.node_label || "Node ID", cell.node_id],
+      ["TAC", cell.tac],
+    ].filter(([, value]) => hasDisplayValue(value));
+    for (const [labelText, valueText] of factEntries) {
+      const item = document.createElement("div");
+      const term = document.createElement("dt");
+      term.textContent = labelText;
+      const value = document.createElement("dd");
+      value.textContent = formatValue(valueText);
+      item.append(term, value);
+      facts.append(item);
+    }
+
+    if (!metrics.length) {
+      metricGrid.append(emptyNode("Signal measurements are not exposed for this radio."));
+    }
+    card.append(header, metricGrid);
+    if (factEntries.length) {
+      card.append(facts);
+    }
+    els.radioCards.append(card);
+  }
+}
+
+function renderTelemetryTrends() {
+  const points = telemetryPointsWithCurrent();
+  const storedCount = Number(state.telemetryHistory?.count || 0);
+  setTag(
+    els.telemetryHistoryTag,
+    storedCount ? `${storedCount} samples / ${formatHistoryRange(state.telemetryHours)}` : "Collecting",
+    storedCount >= 2 ? "good" : "muted"
+  );
+  document.querySelectorAll("[data-telemetry-hours]").forEach((button) => {
+    button.classList.toggle("is-active", Number(button.dataset.telemetryHours) === state.telemetryHours);
+  });
+
+  renderLineChart(
+    els.rsrpTrendChart,
+    points,
+    [
+      { key: "lte", label: "4G LTE", className: "chart-series--lte", read: (point) => point.radios?.lte?.metrics?.rsrp },
+      { key: "nr", label: "5G NR", className: "chart-series--nr", read: (point) => point.radios?.nr?.metrics?.rsrp },
+    ],
+    { unit: "dBm", decimals: 0, emptyText: "RSRP history will appear after two gateway samples." }
+  );
+  renderLineChart(
+    els.sinrTrendChart,
+    points,
+    [
+      { key: "lte", label: "4G LTE", className: "chart-series--lte", read: (point) => point.radios?.lte?.metrics?.sinr },
+      { key: "nr", label: "5G NR", className: "chart-series--nr", read: (point) => point.radios?.nr?.metrics?.sinr },
+    ],
+    { unit: "dB", decimals: 0, emptyText: "SINR history will appear when the gateway exposes it." }
+  );
+  renderLineChart(
+    els.temperatureTrendChart,
+    points,
+    [
+      { key: "temperature", label: "Gateway", className: "chart-series--thermal", read: (point) => point.system?.temperature_c },
+    ],
+    { unit: "C", decimals: 1, emptyText: "This firmware does not expose an internal temperature sensor." }
+  );
+  els.temperatureTrendPanel.classList.toggle(
+    "is-unavailable",
+    !points.some((point) => isFiniteReading(point.system?.temperature_c))
+  );
+}
+
+function telemetryPointsWithCurrent() {
+  const stored = Array.isArray(state.telemetryHistory?.points)
+    ? state.telemetryHistory.points.slice()
+    : [];
+  const current = currentTelemetryPoint();
+  if (current) {
+    const currentTime = new Date(current.observed_at).getTime();
+    const lastTime = stored.length ? new Date(stored[stored.length - 1].observed_at).getTime() : NaN;
+    if (!Number.isFinite(lastTime) || Math.abs(currentTime - lastTime) > 1000) {
+      stored.push(current);
+    }
+  }
+  return stored
+    .filter((point) => Number.isFinite(new Date(point.observed_at).getTime()))
+    .sort((left, right) => new Date(left.observed_at) - new Date(right.observed_at));
+}
+
+function currentTelemetryPoint() {
+  const overview = state.overview;
+  if (!overview?.observed_at || overview?.detection?.reachable !== true) {
+    return null;
+  }
+  const radios = {};
+  for (const radio of Array.isArray(overview.radios) ? overview.radios : []) {
+    const metrics = {};
+    for (const metric of Array.isArray(radio.metrics) ? radio.metrics : []) {
+      const value = Number(metric.value);
+      if (Number.isFinite(value)) {
+        metrics[metric.key] = value;
+      }
+    }
+    radios[radio.key] = { metrics };
+  }
+  return {
+    observed_at: overview.observed_at,
+    signal_score: overview.signal?.score,
+    radios,
+    system: {
+      temperature_c: overview.system?.temperature?.celsius,
+      uptime_seconds: overview.system?.uptime_seconds,
+    },
+  };
+}
+
+function renderLineChart(container, points, seriesDefinitions, options) {
+  replaceChildren(container);
+  const series = seriesDefinitions
+    .map((definition) => ({
+      ...definition,
+      values: points
+        .map((point) => {
+          const rawValue = definition.read(point);
+          return {
+            time: new Date(point.observed_at).getTime(),
+            value: isFiniteReading(rawValue) ? Number(rawValue) : NaN,
+          };
+        })
+        .filter((item) => Number.isFinite(item.time) && Number.isFinite(item.value)),
+    }))
+    .filter((definition) => definition.values.length);
+  if (!series.length) {
+    container.append(emptyNode(options.emptyText));
+    return;
+  }
+
+  const legend = document.createElement("div");
+  legend.className = "chart-legend";
+  for (const definition of series) {
+    const item = document.createElement("span");
+    item.className = definition.className;
+    const marker = document.createElement("i");
+    const latest = definition.values[definition.values.length - 1].value;
+    const textNode = document.createElement("span");
+    textNode.textContent = `${definition.label} ${formatChartNumber(latest, options.decimals)} ${options.unit}`;
+    item.append(marker, textNode);
+    legend.append(item);
+  }
+
+  const width = 720;
+  const height = 230;
+  const margin = { top: 14, right: 18, bottom: 36, left: 54 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  const allValues = series.flatMap((definition) => definition.values.map((item) => item.value));
+  const allTimes = series.flatMap((definition) => definition.values.map((item) => item.time));
+  let minValue = Math.min(...allValues);
+  let maxValue = Math.max(...allValues);
+  const valuePadding = Math.max((maxValue - minValue) * 0.12, options.decimals ? 1.5 : 3);
+  minValue -= valuePadding;
+  maxValue += valuePadding;
+  let minTime = Math.min(...allTimes);
+  let maxTime = Math.max(...allTimes);
+  if (minTime === maxTime) {
+    minTime -= 30000;
+    maxTime += 30000;
+  }
+  const x = (time) => margin.left + ((time - minTime) / (maxTime - minTime)) * plotWidth;
+  const y = (value) => margin.top + ((maxValue - value) / (maxValue - minValue)) * plotHeight;
+
+  const svg = svgElement("svg", {
+    viewBox: `0 0 ${width} ${height}`,
+    role: "img",
+    "aria-label": `${series.map((item) => item.label).join(" and ")} ${options.unit} history`,
+  });
+  svg.classList.add("line-chart");
+  const title = svgElement("title");
+  title.textContent = `${series.map((item) => item.label).join(" and ")} history`;
+  svg.append(title);
+
+  for (let index = 0; index <= 4; index += 1) {
+    const ratio = index / 4;
+    const gridY = margin.top + ratio * plotHeight;
+    svg.append(svgElement("line", { x1: margin.left, y1: gridY, x2: width - margin.right, y2: gridY, class: "chart-grid-line" }));
+    const label = svgElement("text", { x: margin.left - 9, y: gridY + 4, class: "chart-axis-label", "text-anchor": "end" });
+    label.textContent = formatChartNumber(maxValue - ratio * (maxValue - minValue), options.decimals);
+    svg.append(label);
+  }
+
+  const timeLabels = [minTime, minTime + (maxTime - minTime) / 2, maxTime];
+  timeLabels.forEach((time, index) => {
+    const label = svgElement("text", {
+      x: x(time),
+      y: height - 10,
+      class: "chart-axis-label",
+      "text-anchor": index === 0 ? "start" : index === 2 ? "end" : "middle",
+    });
+    label.textContent = formatChartTime(time, state.telemetryHours);
+    svg.append(label);
+  });
+
+  for (const definition of series) {
+    const path = definition.values
+      .map((item, index) => `${index ? "L" : "M"} ${x(item.time).toFixed(2)} ${y(item.value).toFixed(2)}`)
+      .join(" ");
+    const line = svgElement("path", { d: path, class: `chart-series ${definition.className}` });
+    svg.append(line);
+    const latest = definition.values[definition.values.length - 1];
+    const marker = svgElement("circle", {
+      cx: x(latest.time),
+      cy: y(latest.value),
+      r: 4.5,
+      class: `chart-latest ${definition.className}`,
+    });
+    const markerTitle = svgElement("title");
+    markerTitle.textContent = `${definition.label}: ${formatChartNumber(latest.value, options.decimals)} ${options.unit}`;
+    marker.append(markerTitle);
+    svg.append(marker);
+  }
+
+  container.append(legend, svg);
+}
+
+function svgElement(name, attributes = {}) {
+  const element = document.createElementNS("http://www.w3.org/2000/svg", name);
+  for (const [key, value] of Object.entries(attributes)) {
+    element.setAttribute(key, String(value));
+  }
+  return element;
+}
+
+function formatChartNumber(value, decimals = 0) {
+  return Number(value).toFixed(decimals);
+}
+
+function formatChartTime(timestamp, hours) {
+  const date = new Date(timestamp);
+  if (hours > 24) {
+    return date.toLocaleDateString([], { month: "short", day: "numeric" });
+  }
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function formatHistoryRange(hours) {
+  return hours === 168 ? "7 days" : `${hours} hour${hours === 1 ? "" : "s"}`;
+}
+
+function thermalTone(value) {
+  return Number.isFinite(Number(value)) ? "info" : "muted";
+}
+
+function hasDisplayValue(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
+function isFiniteReading(value) {
+  return value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
 }
 
 function renderSignal() {
@@ -2384,6 +2777,13 @@ async function refreshGatewayAndEvents() {
   }
   if (eventsResult.status === "fulfilled") {
     state.events = eventsResult.value;
+  }
+  try {
+    state.telemetryHistory = await api(
+      `/api/gateway/telemetry/history?hours=${state.telemetryHours}`
+    );
+  } catch {
+    // A diagnostic sweep can continue even if chart history is temporarily unavailable.
   }
 }
 

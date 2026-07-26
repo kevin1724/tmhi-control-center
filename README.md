@@ -25,6 +25,12 @@ installs from unknown sources. A signed release build will be added later.
 
 - Shows live gateway health, internet status, cellular connection details, and
   signal quality.
+- Separates 4G LTE and 5G NR measurements into radio cards with RSRP, RSRQ,
+  SINR, RSSI, bars, CQI, band, bandwidth, antenna source, PCI, channel number,
+  cell ID, and eNB/gNB identity when the gateway exposes them.
+- Stores up to 14 days of compact telemetry in SQLite and graphs LTE/5G RSRP,
+  SINR, and gateway temperature across 1-hour, 6-hour, 24-hour, and 7-day
+  ranges.
 - Gives a Homelab readiness score with next-best-action guidance for setup,
   signal tuning, tower data, LAN inventory, watchdog safety, and G4AR backups.
 - Displays useful gateway data such as model, firmware, uptime, WAN info,
@@ -170,7 +176,15 @@ See [.env.example](.env.example) for the full reference.
 ## Dashboard Pages
 
 `Dashboard` gives a live overview of internet status, gateway status, signal
-quality, cellular details, and quick actions.
+quality, radio mode, gateway uptime, conditional temperature data, separate
+LTE/5G telemetry, historical charts, cellular details, and quick actions.
+
+Temperature is shown only when the gateway firmware returns a real sensor
+reading. Stock G4AR firmware commonly omits it, so the dashboard reports `Not
+exposed by firmware` instead of estimating a value.
+
+See [Gateway Telemetry](docs/GATEWAY_TELEMETRY.md) for the full field and
+history reference.
 
 `Devices` shows Wi-Fi configuration and connected LAN/Wi-Fi clients.
 

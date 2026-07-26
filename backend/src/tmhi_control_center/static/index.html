@@ -12,7 +12,7 @@
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
     <link rel="manifest" href="/static/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260724-adapter-default" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260726-radio-telemetry-2" />
   </head>
   <body>
     <div class="app-shell">
@@ -129,9 +129,24 @@
                   <small id="signalQuality">Unknown</small>
                 </article>
                 <article class="metric-card">
-                  <span>Network</span>
-                  <strong id="networkMetric">Unknown</strong>
-                  <small id="networkDetail">Cellular link</small>
+                  <span>Radio Mode</span>
+                  <strong id="radioModeMetric">Unknown</strong>
+                  <small id="radioModeDetail">Cellular link</small>
+                </article>
+                <article class="metric-card">
+                  <span>Temperature</span>
+                  <strong id="temperatureMetric">--</strong>
+                  <small id="temperatureDetail">Not exposed</small>
+                </article>
+                <article class="metric-card">
+                  <span>Uptime</span>
+                  <strong id="uptimeMetric">--</strong>
+                  <small id="uptimeDetail">Gateway runtime</small>
+                </article>
+                <article class="metric-card">
+                  <span>Devices</span>
+                  <strong id="connectedMetric">0</strong>
+                  <small id="connectedDetail">Connected clients</small>
                 </article>
                 <article class="metric-card">
                   <span>Probes</span>
@@ -152,6 +167,70 @@
                   <span>Reboots</span>
                   <strong id="rebootMetric">0</strong>
                   <small>Last 24 hours</small>
+                </article>
+              </div>
+            </section>
+
+            <section class="workspace-section radio-stack" aria-labelledby="radioStackHeading">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Live Radio Stack</p>
+                  <h2 id="radioStackHeading">LTE and 5G Telemetry</h2>
+                </div>
+                <div class="section-actions">
+                  <span id="advancedCellTag" class="tag tag--muted">Basic telemetry</span>
+                  <span id="telemetryFreshness" class="timestamp">Waiting for data</span>
+                </div>
+              </div>
+              <div id="radioCards" class="radio-card-grid"></div>
+            </section>
+
+            <section class="workspace-section trends-section" aria-labelledby="trendsHeading">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">History</p>
+                  <h2 id="trendsHeading">Radio Trends</h2>
+                </div>
+                <div class="section-actions telemetry-toolbar">
+                  <span id="telemetryHistoryTag" class="tag tag--muted">Collecting</span>
+                  <div class="segmented-control" aria-label="Telemetry history range">
+                    <button class="segment-button" type="button" data-telemetry-hours="1">1h</button>
+                    <button class="segment-button is-active" type="button" data-telemetry-hours="6">6h</button>
+                    <button class="segment-button" type="button" data-telemetry-hours="24">24h</button>
+                    <button class="segment-button" type="button" data-telemetry-hours="168">7d</button>
+                  </div>
+                </div>
+              </div>
+              <div class="trend-grid">
+                <article class="chart-panel">
+                  <div class="chart-heading">
+                    <div>
+                      <span>Signal Power</span>
+                      <strong>RSRP</strong>
+                    </div>
+                    <small>dBm</small>
+                  </div>
+                  <div id="rsrpTrendChart" class="telemetry-chart"></div>
+                </article>
+                <article class="chart-panel">
+                  <div class="chart-heading">
+                    <div>
+                      <span>Signal Clarity</span>
+                      <strong>SINR</strong>
+                    </div>
+                    <small>dB</small>
+                  </div>
+                  <div id="sinrTrendChart" class="telemetry-chart"></div>
+                </article>
+                <article id="temperatureTrendPanel" class="chart-panel">
+                  <div class="chart-heading">
+                    <div>
+                      <span>Gateway Thermal</span>
+                      <strong>Temperature</strong>
+                    </div>
+                    <small>C</small>
+                  </div>
+                  <div id="temperatureTrendChart" class="telemetry-chart"></div>
                 </article>
               </div>
             </section>
@@ -894,6 +973,6 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-    <script src="/static/app.js?v=20260724-adapter-default" defer></script>
+    <script src="/static/app.js?v=20260726-radio-telemetry-2" defer></script>
   </body>
 </html>

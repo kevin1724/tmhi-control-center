@@ -125,6 +125,8 @@ async def test_detect_unified_gateway_model() -> None:
 @pytest.mark.asyncio
 async def test_gateway_overview_normalizes_signal_and_redacts_private_fields() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(401, json={"result": {"message": "login unavailable"}})
         assert request.url.path.endswith("/TMI/v1/gateway/")
         return httpx.Response(
             200,
@@ -187,6 +189,119 @@ async def test_gateway_overview_normalizes_signal_and_redacts_private_fields() -
     assert "super-secret" not in rendered
     assert "SN123456" not in rendered
     assert "[redacted]" in rendered
+
+
+@pytest.mark.asyncio
+async def test_gateway_overview_enriches_lte_nr_cell_and_system_telemetry() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/gateway/"):
+            return httpx.Response(
+                200,
+                json={
+                    "device": {
+                        "manufacturer": "Arcadyan",
+                        "model": "TMOG4AR",
+                        "isEnabled": True,
+                        "isMeshSupported": True,
+                        "updateState": "idle",
+                        "deviceTemperature": 42.5,
+                    },
+                    "signal": {
+                        "4g": {
+                            "bands": ["B66"],
+                            "bars": 4,
+                            "rsrp": -91,
+                            "rsrq": -11,
+                            "sinr": 15,
+                            "rssi": -71,
+                            "cid": 1001,
+                            "eNBID": 2002,
+                            "antennaUsed": "External",
+                        },
+                        "5g": {
+                            "bands": ["n41"],
+                            "bars": 5,
+                            "rsrp": -82,
+                            "rsrq": -9,
+                            "sinr": 22,
+                            "rssi": -64,
+                            "cid": 3003,
+                            "gNBID": 4004,
+                            "antennaUsed": "External",
+                        },
+                        "generic": {
+                            "registration": "registered",
+                            "roaming": False,
+                            "hasIPv6": True,
+                        },
+                    },
+                    "time": {"upTime": 183845, "localTimeZone": "America/Los_Angeles"},
+                },
+            )
+        if request.url.path.endswith("/auth/login"):
+            return httpx.Response(200, json={"auth": {"token": "cell-token"}})
+        if request.url.path.endswith("/network/telemetry/"):
+            assert request.url.params["get"] == "cell"
+            assert request.headers["Authorization"] == "Bearer cell-token"
+            return httpx.Response(
+                200,
+                json={
+                    "cell": {
+                        "4g": {
+                            "status": True,
+                            "bandwidth": "20 MHz",
+                            "cqi": 11,
+                            "earfcn": "66786",
+                            "pci": "123",
+                            "tac": "456",
+                            "mcc": "310",
+                            "mnc": "260",
+                        },
+                        "5g": {
+                            "status": True,
+                            "bandwidth": "100 MHz",
+                            "cqi": 14,
+                            "earfcn": "520110",
+                            "pci": "321",
+                            "tac": "654",
+                            "mcc": "310",
+                            "mnc": "260",
+                        },
+                    }
+                },
+            )
+        return httpx.Response(404)
+
+    client = UnifiedGatewayClient(
+        "http://192.168.12.1:8080/TMI/v1",
+        "admin",
+        "secret",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        overview = await client.overview()
+    finally:
+        await client.close()
+
+    radios = {radio["key"]: radio for radio in overview["radios"]}
+    assert set(radios) == {"lte", "nr"}
+    assert radios["lte"]["antenna"] == "External"
+    assert radios["lte"]["cell"]["bandwidth"] == "20 MHz"
+    assert radios["lte"]["cell"]["arfcn"] == "66786"
+    assert radios["nr"]["cell"]["band"] == "n41"
+    assert radios["nr"]["cell"]["pci"] == "321"
+    assert {metric["key"] for metric in radios["nr"]["metrics"]} >= {
+        "rsrp",
+        "rsrq",
+        "sinr",
+        "rssi",
+        "cqi",
+    }
+    assert overview["connection"]["mode"] == "LTE + 5G NR"
+    assert overview["system"]["temperature"]["celsius"] == 42.5
+    assert overview["system"]["uptime"] == "2d 3h 4m"
+    assert overview["system"]["mesh_supported"] is True
+    assert overview["telemetry"]["advanced_cell_available"] is True
 
 
 @pytest.mark.asyncio

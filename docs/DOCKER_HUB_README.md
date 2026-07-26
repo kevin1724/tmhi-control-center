@@ -89,7 +89,12 @@ Username: admin
 
 - Live gateway and internet status dashboard.
 - Cellular signal scoring with RSRP, RSRQ, SINR, RSSI, and bars when available.
-- Gateway model, firmware, WAN, cellular band, PCI, TAC/LAC, and cell ID details.
+- Separate LTE and 5G NR cards with antenna source, CQI, bandwidth, PCI,
+  EARFCN/NR-ARFCN, TAC, cell ID, and eNB/gNB identity when available.
+- SQLite-backed signal history with 1-hour, 6-hour, 24-hour, and 7-day RSRP,
+  SINR, and conditional gateway-temperature charts.
+- Gateway model, firmware, uptime, update state, WAN, radio mode, registration,
+  roaming, and cellular identity details.
 - Wi-Fi SSID and gateway Wi-Fi radio controls when supported by the gateway API.
 - Connected-device list with best-effort vendor/device identification.
 - Tower map using Leaflet, OpenStreetMap, and optional OpenCellID data.
@@ -111,7 +116,8 @@ The app stores settings, event history, and G4AR backup metadata under:
 ```
 
 Keep this volume if you want saved gateway login, map settings, OpenCellID
-configuration, event history, and firmware-lab backup manifests to persist.
+configuration, event history, 14-day telemetry history, and firmware-lab backup
+manifests to persist.
 
 ## Common Environment Variables
 

@@ -9,6 +9,8 @@ from typing import Any, Iterable
 
 
 MAX_RECENT_EVENTS = 10
+TELEMETRY_RETENTION_DAYS = 14
+MAX_TELEMETRY_POINTS = 2000
 
 
 class EventStore:
@@ -43,6 +45,19 @@ class EventStore:
                 )
                 connection.execute(
                     "CREATE INDEX IF NOT EXISTS idx_events_kind_timestamp ON events(kind, timestamp)"
+                )
+                connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS telemetry_snapshots (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp REAL NOT NULL,
+                        payload_json TEXT NOT NULL
+                    )
+                    """
+                )
+                connection.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_telemetry_timestamp "
+                    "ON telemetry_snapshots(timestamp)"
                 )
 
         async with self._lock:
@@ -137,3 +152,171 @@ class EventStore:
         return await self.count_since(
             {"reboot_requested", "reboot_uncertain"}, now - timedelta(hours=24)
         )
+
+    async def record_telemetry(self, overview: dict[str, Any]) -> bool:
+        snapshot = _compact_telemetry_snapshot(overview)
+        if snapshot is None:
+            return False
+        observed_at = _parse_timestamp(overview.get("observed_at"))
+        payload_json = json.dumps(snapshot, separators=(",", ":"), default=str)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=TELEMETRY_RETENTION_DAYS)
+
+        def _record() -> None:
+            with self._connect() as connection:
+                connection.execute(
+                    "INSERT INTO telemetry_snapshots(timestamp, payload_json) VALUES (?, ?)",
+                    (observed_at.timestamp(), payload_json),
+                )
+                connection.execute(
+                    "DELETE FROM telemetry_snapshots WHERE timestamp < ?",
+                    (cutoff.timestamp(),),
+                )
+
+        async with self._lock:
+            await asyncio.to_thread(_record)
+        return True
+
+    async def telemetry_history(
+        self,
+        *,
+        hours: int = 6,
+        limit: int = 720,
+    ) -> dict[str, Any]:
+        safe_hours = max(1, min(hours, 24 * TELEMETRY_RETENTION_DAYS))
+        safe_limit = max(20, min(limit, MAX_TELEMETRY_POINTS))
+        since = datetime.now(timezone.utc) - timedelta(hours=safe_hours)
+
+        def _history() -> list[dict[str, Any]]:
+            with self._connect() as connection:
+                rows = connection.execute(
+                    "SELECT timestamp, payload_json FROM telemetry_snapshots "
+                    "WHERE timestamp >= ? ORDER BY timestamp ASC",
+                    (since.timestamp(),),
+                ).fetchall()
+            points = []
+            for row in rows:
+                payload = json.loads(row["payload_json"])
+                payload["observed_at"] = datetime.fromtimestamp(
+                    row["timestamp"], timezone.utc
+                ).isoformat()
+                points.append(payload)
+            return _downsample(points, safe_limit)
+
+        async with self._lock:
+            points = await asyncio.to_thread(_history)
+
+        return {
+            "range_hours": safe_hours,
+            "retention_days": TELEMETRY_RETENTION_DAYS,
+            "count": len(points),
+            "first_observed_at": points[0]["observed_at"] if points else None,
+            "last_observed_at": points[-1]["observed_at"] if points else None,
+            "series": _available_series(points),
+            "points": points,
+        }
+
+
+def _compact_telemetry_snapshot(overview: dict[str, Any]) -> dict[str, Any] | None:
+    detection = overview.get("detection")
+    if not isinstance(detection, dict) or detection.get("reachable") is not True:
+        return None
+
+    radios_payload: dict[str, Any] = {}
+    radios = overview.get("radios")
+    if isinstance(radios, list):
+        for radio in radios:
+            if not isinstance(radio, dict) or not radio.get("key"):
+                continue
+            metrics_payload: dict[str, float] = {}
+            metrics = radio.get("metrics")
+            if isinstance(metrics, list):
+                for metric in metrics:
+                    if not isinstance(metric, dict) or not metric.get("key"):
+                        continue
+                    value = metric.get("value")
+                    if isinstance(value, (int, float)) and not isinstance(value, bool):
+                        metrics_payload[str(metric["key"])] = float(value)
+            cell = radio.get("cell") if isinstance(radio.get("cell"), dict) else {}
+            radios_payload[str(radio["key"])] = {
+                "active": radio.get("active"),
+                "score": radio.get("score"),
+                "quality": radio.get("quality"),
+                "antenna": radio.get("antenna"),
+                "band": cell.get("band"),
+                "bandwidth": cell.get("bandwidth"),
+                "pci": cell.get("pci"),
+                "arfcn": cell.get("arfcn"),
+                "cell_id": cell.get("cell_id"),
+                "metrics": metrics_payload,
+            }
+
+    signal = overview.get("signal") if isinstance(overview.get("signal"), dict) else {}
+    system = overview.get("system") if isinstance(overview.get("system"), dict) else {}
+    temperature = (
+        system.get("temperature")
+        if isinstance(system.get("temperature"), dict)
+        else {}
+    )
+    connection = (
+        overview.get("connection")
+        if isinstance(overview.get("connection"), dict)
+        else {}
+    )
+    snapshot = {
+        "signal_score": signal.get("score"),
+        "radios": radios_payload,
+        "system": {
+            "temperature_c": temperature.get("celsius"),
+            "uptime_seconds": system.get("uptime_seconds"),
+        },
+        "connection": {
+            "mode": connection.get("mode") or connection.get("network_type"),
+            "band": connection.get("band"),
+            "cell_id": connection.get("cell_id"),
+        },
+    }
+    has_measurement = bool(
+        radios_payload
+        or snapshot["signal_score"] is not None
+        or snapshot["system"]["temperature_c"] is not None
+    )
+    return snapshot if has_measurement else None
+
+
+def _parse_timestamp(value: Any) -> datetime:
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                return parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc)
+        except ValueError:
+            pass
+    return datetime.now(timezone.utc)
+
+
+def _downsample(points: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    if len(points) <= limit:
+        return points
+    last_index = len(points) - 1
+    indexes = [round(index * last_index / (limit - 1)) for index in range(limit)]
+    return [points[index] for index in indexes]
+
+
+def _available_series(points: list[dict[str, Any]]) -> list[str]:
+    series: set[str] = set()
+    for point in points:
+        if point.get("signal_score") is not None:
+            series.add("signal_score")
+        system = point.get("system") if isinstance(point.get("system"), dict) else {}
+        if system.get("temperature_c") is not None:
+            series.add("temperature_c")
+        radios = point.get("radios") if isinstance(point.get("radios"), dict) else {}
+        for radio_key, radio in radios.items():
+            if not isinstance(radio, dict):
+                continue
+            metrics = radio.get("metrics") if isinstance(radio.get("metrics"), dict) else {}
+            for metric_key, value in metrics.items():
+                if value is not None:
+                    series.add(f"{radio_key}.{metric_key}")
+    return sorted(series)
