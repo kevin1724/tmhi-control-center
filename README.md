@@ -188,16 +188,17 @@ quality, radio mode, gateway uptime, conditional temperature data, separate
 LTE/5G telemetry, historical charts, speed-test history, cellular
 details, and quick actions.
 
-Speed history is disabled by default. The dashboard supports 5, 10, 15, and
+Speed history is disabled by default. Settings supports 5, 10, 15, and
 30-minute intervals, hourly tests, and daily, weekly, or monthly schedules.
 The chart opens on the last 24 hours, while longer ranges remain available.
-Download and upload samples run one after the other, and the schedule panel
-shows estimated daily and 30-day traffic before saving. The Accurate profile
-uses about 125.8 MB per run for a more sustained measurement. Users can retain
-results for 30 days, 90 days, 6 months, 1 year, or 2 years and open the complete
-retained range from the chart. Reducing retention immediately removes older
-records. Test traffic and measurement metadata go to Cloudflare; saved results
-stay in the local SQLite database. See
+Download and upload samples run one after the other. Settings contains the
+automatic schedule, test size, retention, and estimated daily and 30-day
+traffic. The Accurate profile uses about 125.8 MB per run for a more sustained
+measurement. Users can retain results for 30 days, 90 days, 6 months, 1 year,
+or 2 years and open the complete retained range from the dashboard chart.
+Reducing retention immediately removes older records. Test traffic and
+measurement metadata go to Cloudflare; saved results stay in the local SQLite
+database. See
 [Speed Test History](docs/SPEED_TEST_HISTORY.md) for details.
 
 Temperature is shown only when the gateway firmware returns a real sensor
@@ -218,8 +219,8 @@ offload/SQM playbook, and the direct Docker G4AR recovery workflow.
 `Diagnostics` shows connectivity probes, event history, raw gateway sections,
 and repeated probe sweeps.
 
-`Settings` stores gateway login, theme preference, tower data settings, watchdog
-settings, and advanced G4AR lab settings.
+`Settings` stores gateway login, theme preference, tower data, automatic speed
+tests and retention, watchdog settings, and advanced G4AR lab settings.
 
 ## G4AR Unlock / Radio Lab
 

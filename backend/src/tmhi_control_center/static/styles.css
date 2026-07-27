@@ -899,7 +899,7 @@ summary:focus-visible {
 
 .speed-history-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(290px, 0.5fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   align-items: stretch;
 }
@@ -913,10 +913,17 @@ summary:focus-visible {
 }
 
 .speed-schedule-panel {
-  min-height: 390px;
-  padding: 16px;
-  background: var(--surface);
-  box-shadow: var(--shadow);
+  min-height: 0;
+}
+
+.speed-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.speed-schedule-panel > .button-row {
+  margin-top: 14px;
 }
 
 .schedule-status {
@@ -2255,6 +2262,10 @@ th {
 }
 
 @media (max-width: 760px) {
+  .speed-settings-grid {
+    grid-template-columns: 1fr;
+  }
+
   .speed-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

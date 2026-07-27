@@ -42,6 +42,8 @@ All notable changes to this new project will be documented here.
 
 ### Changed
 
+- Moved automatic speed-test scheduling, test size, retention, traffic
+  estimates, and save controls from the dashboard into Settings.
 - Matched the Android interface to the web dashboard's visual system with the
   same neutral surfaces, dark navigation, magenta section labels, compact
   metric grids, and 8px bordered panels.

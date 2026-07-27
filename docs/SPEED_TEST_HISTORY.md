@@ -5,7 +5,8 @@ jitter change over time without running a continuous background load.
 
 ## Schedule
 
-Automatic tests are disabled by default. The dashboard offers:
+Automatic tests are disabled by default. Open `Settings` and use the
+`Speed Test History` section to choose:
 
 - `Every 5 minutes`
 - `Every 10 minutes`
@@ -39,7 +40,7 @@ trend comparison. Accurate uses a longer transfer to give fast connections more
 time to reach steady throughput, but a single-connection result may still be
 lower than a large multi-connection benchmark.
 
-The schedule panel calculates the maximum daily and 30-day transfer before the
+The Settings panel calculates the maximum daily and 30-day transfer before the
 schedule is saved. For context, `Every 5 minutes` runs 288 tests per day:
 
 | Profile | Maximum per day | Maximum per 30 days |

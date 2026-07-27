@@ -289,55 +289,6 @@
                   <div id="speedTestTrendChart" class="telemetry-chart"></div>
                   <div id="speedTestDayparts" class="daypart-grid"></div>
                 </article>
-
-                <fieldset class="tool-group speed-schedule-panel">
-                  <legend>Schedule</legend>
-                  <label class="field">
-                    <span>Automatic test</span>
-                    <select id="speedTestCadence">
-                      <option value="disabled">Off</option>
-                      <option value="every_5_minutes">Every 5 minutes</option>
-                      <option value="every_10_minutes">Every 10 minutes</option>
-                      <option value="every_15_minutes">Every 15 minutes</option>
-                      <option value="every_30_minutes">Every 30 minutes</option>
-                      <option value="hourly">Every hour</option>
-                      <option value="daily">Once a day</option>
-                      <option value="weekly">Once a week</option>
-                      <option value="monthly">Once a month</option>
-                    </select>
-                  </label>
-                  <label class="field">
-                    <span>Test size</span>
-                    <select id="speedTestProfile">
-                      <option value="gentle">Gentle - about 12 MB</option>
-                      <option value="standard">Standard - about 31 MB</option>
-                      <option value="accurate">Accurate - about 126 MB</option>
-                    </select>
-                  </label>
-                  <label class="field">
-                    <span>Keep history</span>
-                    <select id="speedTestRetention">
-                      <option value="30">30 days</option>
-                      <option value="90">90 days</option>
-                      <option value="180">6 months</option>
-                      <option value="365">1 year</option>
-                      <option value="730" selected>2 years</option>
-                    </select>
-                  </label>
-                  <button id="speedTestSaveButton" class="button button--primary" type="button">
-                    Save Speed Settings
-                  </button>
-                  <div class="schedule-status">
-                    <strong id="speedTestNextRun">Automatic tests are off</strong>
-                    <span id="speedTestScheduleDetail">Choose a schedule and test size.</span>
-                    <strong id="speedTestUsageEstimate">No scheduled test traffic</strong>
-                    <span id="speedTestUsageWarning">Manual tests still use the selected profile.</span>
-                  </div>
-                  <p class="privacy-note">
-                    Download and upload samples run one at a time. Measurement traffic and metadata go to Cloudflare;
-                    result history stays in this app's local database.
-                  </p>
-                </fieldset>
               </div>
             </section>
 
@@ -881,6 +832,59 @@
                     Clear
                   </button>
                 </div>
+              </fieldset>
+
+              <fieldset class="tool-group settings-card settings-card--wide speed-schedule-panel">
+                <legend>Speed Test History</legend>
+                <div class="speed-settings-grid">
+                  <label class="field">
+                    <span>Automatic test</span>
+                    <select id="speedTestCadence">
+                      <option value="disabled">Off</option>
+                      <option value="every_5_minutes">Every 5 minutes</option>
+                      <option value="every_10_minutes">Every 10 minutes</option>
+                      <option value="every_15_minutes">Every 15 minutes</option>
+                      <option value="every_30_minutes">Every 30 minutes</option>
+                      <option value="hourly">Every hour</option>
+                      <option value="daily">Once a day</option>
+                      <option value="weekly">Once a week</option>
+                      <option value="monthly">Once a month</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Test size</span>
+                    <select id="speedTestProfile">
+                      <option value="gentle">Gentle - about 12 MB</option>
+                      <option value="standard">Standard - about 31 MB</option>
+                      <option value="accurate">Accurate - about 126 MB</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Keep history</span>
+                    <select id="speedTestRetention">
+                      <option value="30">30 days</option>
+                      <option value="90">90 days</option>
+                      <option value="180">6 months</option>
+                      <option value="365">1 year</option>
+                      <option value="730" selected>2 years</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="button-row">
+                  <button id="speedTestSaveButton" class="button button--primary" type="button">
+                    Save Speed Settings
+                  </button>
+                </div>
+                <div class="schedule-status">
+                  <strong id="speedTestNextRun">Automatic tests are off</strong>
+                  <span id="speedTestScheduleDetail">Choose a schedule and test size.</span>
+                  <strong id="speedTestUsageEstimate">No scheduled test traffic</strong>
+                  <span id="speedTestUsageWarning">Manual tests still use the selected profile.</span>
+                </div>
+                <p class="privacy-note">
+                  Download and upload samples run one at a time. Measurement traffic and metadata go to Cloudflare;
+                  result history stays in this app's local database.
+                </p>
               </fieldset>
 
               <fieldset class="tool-group settings-card settings-card--wide">
