@@ -111,6 +111,8 @@ Username: admin
 - G4AR Unlock / Radio Lab settings for owner-controlled Arcadyan TMO-G4AR units.
 - Read-only G4AR USB-C 2.5GbE probing for USB host mode, 5Gbps negotiation,
   driver/interface readiness, carrier, link speed, and LAN bridge membership.
+- Owner-only G4AR root research readiness with a large brick warning, verified
+  versus unverified evidence, and read-only backup/recovery gates.
 
 ## Volumes
 
@@ -179,6 +181,8 @@ Important limitations:
 
 - This image does not provide firmware downloads.
 - This image does not write firmware by itself.
+- This image does not currently root the G4AR. No reproducible G4AR root chain,
+  complete restore path, or supported OpenWrt image has been verified.
 - This image does not increase transmit power.
 - Stock gateway firmware may not expose tower locking or LTE/NSA controls.
 - Custom firmware, modem commands, and antenna modifications can brick hardware,

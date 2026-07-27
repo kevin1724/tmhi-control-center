@@ -12,6 +12,10 @@ save gateway login, configure a trusted local adapter, create a stock backup,
 record hashes, choose a radio-profile intent, and keep flash controls locked
 behind explicit consent.
 
+This firmware workflow is not a verified G4AR rooting method. For the current
+root status, equipment requirements, receive-only discovery order, and hard
+stops, read the [G4AR Owner Root Research Guide](G4AR_ROOT_RESEARCH_GUIDE.md).
+
 ## What You Need
 
 - A G4AR gateway that you own and can afford to recover or replace.

@@ -1585,6 +1585,145 @@ summary:focus-visible {
   grid-column: 1 / -1;
 }
 
+.root-research-panel {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.root-research-header,
+.root-readiness-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.root-research-header h4 {
+  margin: 3px 0 0;
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.root-research-header .tag {
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
+}
+
+.root-warning {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 2px solid var(--red);
+  border-left-width: 8px;
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--red-soft);
+}
+
+.root-warning strong {
+  color: var(--red);
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.root-warning p,
+.root-research-finding,
+.root-readiness-form > p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.root-research-finding {
+  color: var(--ink);
+  font-weight: 750;
+}
+
+.root-evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-block: 1px solid var(--line);
+}
+
+.root-evidence-grid > div {
+  min-width: 0;
+  padding: 14px 14px 14px 0;
+}
+
+.root-evidence-grid > div + div {
+  padding-left: 14px;
+  border-left: 1px solid var(--line);
+}
+
+.root-evidence-grid h5,
+.root-phase-band h5,
+.root-hard-stop-band h5,
+.root-readiness-form h5 {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.plain-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding-left: 19px;
+  color: var(--muted);
+}
+
+.root-phase-band,
+.root-hard-stop-band {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.root-phase-band .numbered-list,
+.root-hard-stop-band .plain-list {
+  color: var(--muted);
+}
+
+.root-hard-stop-band {
+  color: var(--red);
+}
+
+.root-hard-stop-band .plain-list {
+  color: var(--ink);
+}
+
+.root-readiness-form {
+  display: grid;
+  gap: 12px;
+}
+
+.root-check-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 18px;
+}
+
+.root-check-grid .check-row {
+  align-content: start;
+  margin-bottom: 8px;
+  font-weight: 650;
+}
+
+.root-readiness-actions {
+  justify-content: flex-start;
+}
+
+.root-readiness-form .inline-status {
+  justify-self: start;
+  max-width: 100%;
+  min-height: 0;
+  white-space: normal;
+  text-align: left;
+}
+
 .backup-list {
   display: grid;
   gap: 8px;
@@ -2205,6 +2344,21 @@ th {
 
   .usb-check-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .root-evidence-grid,
+  .root-check-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .root-evidence-grid > div {
+    padding: 14px 0;
+  }
+
+  .root-evidence-grid > div + div {
+    padding-left: 0;
+    border-top: 1px solid var(--line);
+    border-left: 0;
   }
 
   .usb-lab-header {

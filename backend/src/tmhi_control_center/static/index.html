@@ -1013,6 +1013,115 @@
                   <div id="firmwareBackupList" class="backup-list"></div>
                 </div>
 
+                <section class="root-research-panel" aria-labelledby="rootResearchHeading">
+                  <div class="root-research-header">
+                    <div>
+                      <span class="eyebrow">Owner hardware research</span>
+                      <h4 id="rootResearchHeading">G4AR Root Readiness</h4>
+                    </div>
+                    <span id="rootResearchTag" class="tag tag--bad">No verified root path</span>
+                  </div>
+                  <div class="root-warning" role="alert">
+                    <strong>ROOT RESEARCH CAN PERMANENTLY BRICK THIS GATEWAY</strong>
+                    <p>
+                      Continue only with a G4AR you own outright and can replace. Never use this
+                      lab on leased, financed, carrier-owned, or service-critical hardware.
+                      Opening the case, probing test pads, bypassing verified boot, or writing
+                      storage can destroy calibration and identity data, void warranty, and leave
+                      the gateway without a recovery path.
+                    </p>
+                  </div>
+                  <p id="rootResearchFinding" class="root-research-finding">
+                    Checking the current G4AR research status.
+                  </p>
+                  <div class="root-evidence-grid">
+                    <div>
+                      <h5>What is verified</h5>
+                      <ul id="rootVerifiedEvidenceList" class="plain-list"></ul>
+                    </div>
+                    <div>
+                      <h5>What is not verified</h5>
+                      <ul id="rootUnverifiedList" class="plain-list"></ul>
+                    </div>
+                  </div>
+                  <div class="root-phase-band">
+                    <h5>Safe research order</h5>
+                    <ol id="rootResearchPhases" class="numbered-list"></ol>
+                  </div>
+                  <div class="root-hard-stop-band">
+                    <h5>Hard stops</h5>
+                    <ul id="rootHardStopList" class="plain-list"></ul>
+                  </div>
+                  <div class="root-readiness-form">
+                    <h5>Read-only research checklist</h5>
+                    <p>
+                      Completing this checklist does not unlock rooting. It only confirms that
+                      the unit is prepared for receive-only hardware discovery.
+                    </p>
+                    <div class="root-check-grid">
+                      <label class="check-row">
+                        <input id="rootOwnsHardware" type="checkbox" />
+                        <span>I own this exact G4AR outright.</span>
+                      </label>
+                      <label class="check-row">
+                        <input id="rootNotLeased" type="checkbox" />
+                        <span>It is not leased, financed, or carrier-owned.</span>
+                      </label>
+                      <label class="check-row">
+                        <input id="rootSpareUnit" type="checkbox" />
+                        <span>This is a spare, non-critical unit I can replace.</span>
+                      </label>
+                      <label class="check-row">
+                        <input id="rootRevisionRecorded" type="checkbox" />
+                        <span>Exact board revision and firmware are recorded.</span>
+                      </label>
+                      <label class="check-row">
+                        <input id="rootUartVoltageVerified" type="checkbox" />
+                        <span>Pad voltage and roles were measured on this board.</span>
+                      </label>
+                      <label class="check-row">
+                        <input id="rootBootLogCaptured" type="checkbox" />
+                        <span>A receive-only boot log was captured without TX or VCC.</span>
+                      </label>
+                      <label class="check-row">
+                        <input id="rootFullBackupVerified" type="checkbox" />
+                        <span>Partitions, calibration, identity, and NVRAM are backed up.</span>
+                      </label>
+                      <label class="check-row">
+                        <input id="rootOfflineRecoveryVerified" type="checkbox" />
+                        <span>Offline recovery was tested on this exact unit.</span>
+                      </label>
+                      <label class="check-row">
+                        <input id="rootAcceptsBrickRisk" type="checkbox" />
+                        <span>I accept permanent brick, warranty, and service risk.</span>
+                      </label>
+                    </div>
+                    <label class="field">
+                      <span>Type owner research consent phrase</span>
+                      <input
+                        id="rootConsentPhrase"
+                        type="text"
+                        autocomplete="off"
+                        placeholder="I OWN THIS G4AR - ROOT RESEARCH CAN PERMANENTLY BRICK IT"
+                      />
+                    </label>
+                    <div class="root-readiness-actions">
+                      <button id="rootAssessButton" class="button button--secondary" type="button">
+                        Assess Readiness
+                      </button>
+                      <a
+                        class="button button--secondary"
+                        href="https://github.com/kevin1724/tmhi-control-center/blob/main/docs/G4AR_ROOT_RESEARCH_GUIDE.md"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open Root Research Guide
+                      </a>
+                    </div>
+                    <p id="rootAssessmentStatus" class="inline-status" aria-live="polite"></p>
+                  </div>
+                </section>
+
                 <div class="firmware-gate">
                   <div class="warning-panel warning-panel--danger">
                     <strong>G4AR firmware override gate</strong>
@@ -1093,6 +1202,6 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-    <script src="/static/app.js?v=20260726-conditional-telemetry-1" defer></script>
+    <script src="/static/app.js?v=20260726-g4ar-root-research-1" defer></script>
   </body>
 </html>

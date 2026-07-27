@@ -14,6 +14,8 @@ const state = {
   clients: null,
   events: [],
   firmwareBackups: null,
+  rootResearch: null,
+  rootResearchAssessment: null,
   usbLab: null,
   mapData: null,
   telemetryHistory: null,
@@ -167,6 +169,24 @@ const ids = [
   "speedTestUpload",
   "speedTestUploadDetail",
   "rsrpTrendChart",
+  "rootAcceptsBrickRisk",
+  "rootAssessButton",
+  "rootAssessmentStatus",
+  "rootBootLogCaptured",
+  "rootConsentPhrase",
+  "rootFullBackupVerified",
+  "rootHardStopList",
+  "rootNotLeased",
+  "rootOfflineRecoveryVerified",
+  "rootOwnsHardware",
+  "rootResearchFinding",
+  "rootResearchPhases",
+  "rootResearchTag",
+  "rootRevisionRecorded",
+  "rootSpareUnit",
+  "rootUartVoltageVerified",
+  "rootUnverifiedList",
+  "rootVerifiedEvidenceList",
   "telemetryFreshness",
   "telemetryHistoryTag",
   "telemetryTrendGrid",
@@ -234,6 +254,7 @@ const detailLabels = {
   radio_enabled: "Gateway Wi-Fi radios",
   radio_profile: "G4AR radio profile",
   radio_mode_override: "Radio override",
+  root_access: "Root access",
   registration: "Registration",
   roaming: "Roaming",
   lte_anchor_override: "LTE anchor / NSA",
@@ -292,6 +313,7 @@ function bindControls() {
   els.usbProbeButton.addEventListener("click", probeG4ARUsbPort);
   els.firmwareBackupButton.addEventListener("click", createG4ARFirmwareBackup);
   els.firmwareFlashButton.addEventListener("click", armG4ARFlashGate);
+  els.rootAssessButton.addEventListener("click", assessG4ARRootReadiness);
   els.downloadSnapshotButton.addEventListener("click", downloadSnapshot);
   els.saveSettingsButton.addEventListener("click", saveSettings);
   els.speedTestRunButton.addEventListener("click", runSpeedTestNow);
@@ -320,6 +342,18 @@ function bindControls() {
   els.firmwareBackupVerified.addEventListener("change", updateControlState);
   els.firmwareRecoveryVerified.addEventListener("change", updateControlState);
   els.firmwareUnderstandsRisk.addEventListener("change", updateControlState);
+  [
+    els.rootOwnsHardware,
+    els.rootNotLeased,
+    els.rootSpareUnit,
+    els.rootRevisionRecorded,
+    els.rootUartVoltageVerified,
+    els.rootBootLogCaptured,
+    els.rootFullBackupVerified,
+    els.rootOfflineRecoveryVerified,
+    els.rootAcceptsBrickRisk,
+  ].forEach((input) => input.addEventListener("change", updateControlState));
+  els.rootConsentPhrase.addEventListener("input", updateControlState);
   els.darkModeToggle.addEventListener("change", () => {
     setTheme(els.darkModeToggle.checked ? "dark" : "light", { persist: true });
   });
@@ -418,6 +452,7 @@ async function refreshAll({ quiet = false } = {}) {
     api("/api/g4ar/usb/status"),
     api("/api/speedtest/status"),
     api("/api/speedtest/history?days=365"),
+    api("/api/g4ar/root/status"),
   ]);
 
   const errors = [];
@@ -484,6 +519,11 @@ async function refreshAll({ quiet = false } = {}) {
     state.speedTestHistory = results[11].value;
   } else {
     errors.push(`Speed history: ${results[11].reason.message}`);
+  }
+  if (results[12].status === "fulfilled") {
+    state.rootResearch = results[12].value;
+  } else {
+    errors.push(`Root research: ${results[12].reason.message}`);
   }
 
   renderAll();
@@ -1759,6 +1799,7 @@ function renderAdvancedModemControls() {
       upload_priority_qos: capabilityText(capabilities.upload_priority_qos),
       stock_firmware_backup: capabilityText(capabilities.stock_firmware_backup),
       custom_firmware_flash: capabilityText(capabilities.custom_firmware_flash),
+      root_access: capabilityText(capabilities.root_access),
       tx_power: capabilityText(capabilities.tx_power_override),
     },
     "Advanced modem capabilities load after settings refresh."
@@ -1777,6 +1818,58 @@ function renderAdvancedModemControls() {
   );
   renderFirmwareBackupList();
   renderUsbLab();
+  renderRootResearch();
+}
+
+function renderRootResearch() {
+  if (!els.rootResearchTag) {
+    return;
+  }
+
+  const root =
+    state.rootResearch || state.config?.advanced_modem?.g4ar_root_research || {};
+  const verified = Boolean(root.verified_root_available);
+  setTag(
+    els.rootResearchTag,
+    verified ? "Verified root path" : "No verified root path",
+    verified ? "good" : "bad"
+  );
+  setText(
+    els.rootResearchFinding,
+    root.current_finding ||
+      "No public, reproducible G4AR root chain has been verified. Read-only research only."
+  );
+  renderOrderedList(els.rootVerifiedEvidenceList, root.verified_evidence || []);
+  renderOrderedList(els.rootUnverifiedList, root.not_verified || []);
+  renderOrderedList(
+    els.rootResearchPhases,
+    (root.research_phases || []).map(
+      (phase) => `${phase.title}: ${phase.goal} No writes.`
+    )
+  );
+  renderOrderedList(els.rootHardStopList, root.hard_stops || []);
+  if (els.rootConsentPhrase && root.consent_phrase) {
+    els.rootConsentPhrase.placeholder = root.consent_phrase;
+  }
+
+  const assessment = state.rootResearchAssessment;
+  if (!assessment) {
+    els.rootAssessmentStatus.className = "inline-status inline-status--muted";
+    setText(
+      els.rootAssessmentStatus,
+      "Assessment has not run. Root execution remains disabled."
+    );
+    return;
+  }
+
+  const readOnlyReady = Boolean(assessment.ready_for_read_only_research);
+  els.rootAssessmentStatus.className = `inline-status inline-status--${readOnlyReady ? "warn" : "bad"}`;
+  setText(
+    els.rootAssessmentStatus,
+    readOnlyReady
+      ? "Ready for receive-only hardware research. Root execution is still disabled because no verified G4AR chain exists."
+      : `Not ready: ${(assessment.missing || []).join("; ")}`
+  );
 }
 
 function renderUsbLab() {
@@ -2931,6 +3024,30 @@ async function armG4ARFlashGate() {
   });
 }
 
+async function assessG4ARRootReadiness() {
+  await runAction("Assessing owner G4AR root-research readiness.", async () => {
+    state.rootResearchAssessment = await api("/api/g4ar/root/assess", {
+      method: "POST",
+      body: {
+        owns_hardware: els.rootOwnsHardware.checked,
+        not_leased_or_financed: els.rootNotLeased.checked,
+        spare_noncritical_unit: els.rootSpareUnit.checked,
+        hardware_revision_recorded: els.rootRevisionRecorded.checked,
+        uart_voltage_verified: els.rootUartVoltageVerified.checked,
+        read_only_boot_log_captured: els.rootBootLogCaptured.checked,
+        full_backup_verified: els.rootFullBackupVerified.checked,
+        offline_recovery_verified: els.rootOfflineRecoveryVerified.checked,
+        accepts_permanent_brick_risk: els.rootAcceptsBrickRisk.checked,
+        consent_phrase: els.rootConsentPhrase.value.trim(),
+      },
+    });
+    renderRootResearch();
+    return state.rootResearchAssessment.ready_for_read_only_research
+      ? "Read-only research readiness confirmed. Root execution remains disabled."
+      : `Root research is blocked by ${state.rootResearchAssessment.missing.length} requirement(s).`;
+  });
+}
+
 async function createG4ARFirmwareBackup() {
   if (!isG4ARLabMode(els.advancedModemMode.value)) {
     setActionMessage("Select G4AR unlock / radio lab mode before creating a stock backup.", "error");
@@ -3241,6 +3358,22 @@ function updateControlState() {
   els.firmwareRecoveryVerified.disabled = busy || !g4arLabEnabled;
   els.firmwareUnderstandsRisk.disabled = busy || !g4arLabEnabled;
   els.firmwareFlashButton.disabled = busy || !g4arLabEnabled || !hasFirmwareGateInputs;
+  [
+    els.rootOwnsHardware,
+    els.rootNotLeased,
+    els.rootSpareUnit,
+    els.rootRevisionRecorded,
+    els.rootUartVoltageVerified,
+    els.rootBootLogCaptured,
+    els.rootFullBackupVerified,
+    els.rootOfflineRecoveryVerified,
+    els.rootAcceptsBrickRisk,
+    els.rootConsentPhrase,
+  ].forEach((input) => {
+    input.disabled = busy || !g4arLabEnabled;
+  });
+  els.rootAssessButton.disabled =
+    busy || !g4arLabEnabled || !els.advancedModemAcknowledge.checked;
   els.forceReboot.disabled = busy;
   els.seriesStartButton.disabled = busy;
   els.seriesStopButton.disabled = !state.seriesRunning;

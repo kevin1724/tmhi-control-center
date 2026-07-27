@@ -30,6 +30,7 @@ from .firmware_backup import (
 )
 from .gateway import GatewayAuthenticationError, GatewayError, UnifiedGatewayClient
 from .geolocation import PublicIpLocationError, PublicIpLocator
+from .g4ar_root import assess_g4ar_root_readiness, g4ar_root_research_status
 from .insights import build_homelab_insights
 from .speedtest import SpeedTestBusyError, SpeedTestError, SpeedTestManager
 from .storage import EventStore
@@ -171,6 +172,19 @@ class G4ARFirmwareFlashRequest(BaseModel):
 
 class G4ARFirmwareBackupRequest(BaseModel):
     reason: str = Field(default="ui_request", max_length=80)
+
+
+class G4ARRootReadinessRequest(BaseModel):
+    owns_hardware: bool = False
+    not_leased_or_financed: bool = False
+    spare_noncritical_unit: bool = False
+    hardware_revision_recorded: bool = False
+    uart_voltage_verified: bool = False
+    read_only_boot_log_captured: bool = False
+    full_backup_verified: bool = False
+    offline_recovery_verified: bool = False
+    accepts_permanent_brick_risk: bool = False
+    consent_phrase: str = Field(default="", max_length=128)
 
 
 class MapSettingsUpdateRequest(BaseModel):
@@ -609,6 +623,7 @@ async def built_in_adapter_health() -> dict[str, Any]:
             "usb_hardware_probe": False,
             "usb_ethernet_bridge": False,
             "firmware_flash": False,
+            "root_access": False,
             "tx_power_override": False,
         },
     }
@@ -693,6 +708,33 @@ async def g4ar_usb_lab_probe() -> dict[str, Any]:
 @app.get("/api/g4ar/firmware/status")
 async def g4ar_firmware_status() -> dict[str, Any]:
     return g4ar_firmware_lab_status(settings)
+
+
+@app.get("/api/g4ar/root/status")
+async def g4ar_root_status() -> dict[str, Any]:
+    return g4ar_root_research_status()
+
+
+@app.post("/api/g4ar/root/assess")
+async def g4ar_root_assess(request: G4ARRootReadinessRequest) -> dict[str, Any]:
+    request_payload = (
+        request.model_dump() if hasattr(request, "model_dump") else request.dict()
+    )
+    result = assess_g4ar_root_readiness(
+        request_payload,
+        lab_mode_active=settings.advanced_modem_mode in G4AR_LAB_MODES,
+        lab_acknowledged=settings.advanced_modem_acknowledged,
+    )
+    await store.record(
+        "g4ar_root_readiness_assessed",
+        "G4AR owner root-research readiness assessed",
+        {
+            "ready_for_read_only_research": result["ready_for_read_only_research"],
+            "root_execution_enabled": False,
+            "missing_count": len(result["missing"]),
+        },
+    )
+    return result
 
 
 @app.get("/api/g4ar/firmware/backups")

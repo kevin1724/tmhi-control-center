@@ -518,6 +518,51 @@ def test_g4ar_firmware_lab_flash_gate_requires_full_consent(
     assert "not implemented" in fully_consented.json()["detail"]
 
 
+def test_g4ar_root_research_api_never_enables_root_execution(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    main = load_main(monkeypatch, tmp_path)
+    complete_payload = {
+        "owns_hardware": True,
+        "not_leased_or_financed": True,
+        "spare_noncritical_unit": True,
+        "hardware_revision_recorded": True,
+        "uart_voltage_verified": True,
+        "read_only_boot_log_captured": True,
+        "full_backup_verified": True,
+        "offline_recovery_verified": True,
+        "accepts_permanent_brick_risk": True,
+        "consent_phrase": "I OWN THIS G4AR - ROOT RESEARCH CAN PERMANENTLY BRICK IT",
+    }
+
+    with TestClient(main.app) as client:
+        status = client.get("/api/g4ar/root/status")
+        blocked = client.post("/api/g4ar/root/assess", json=complete_payload)
+        saved = client.post(
+            "/api/advanced-modem/settings",
+            json={
+                "mode": "g4ar_unlock_lab",
+                "control_url": "",
+                "acknowledged": True,
+            },
+        )
+        ready = client.post("/api/g4ar/root/assess", json=complete_payload)
+
+    assert status.status_code == 200
+    assert status.json()["verified_root_available"] is False
+    assert status.json()["root_execution_enabled"] is False
+    assert blocked.status_code == 200
+    assert blocked.json()["ready_for_read_only_research"] is False
+    assert "G4AR unlock / radio lab mode enabled" in blocked.json()["missing"]
+    assert saved.status_code == 200
+    assert saved.json()["advanced_modem"]["capabilities"]["root_access"]["supported"] is False
+    assert ready.status_code == 200
+    assert ready.json()["ready_for_read_only_research"] is True
+    assert ready.json()["ready_for_rooting"] is False
+    assert ready.json()["root_execution_enabled"] is False
+
+
 def test_g4ar_firmware_backup_requires_unlock_lab(
     monkeypatch,
     tmp_path,

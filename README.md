@@ -234,12 +234,15 @@ Use the lab for:
 - Tracking LTE anchor / 5G NSA, LTE-only, 5G SA, and scan-only profile intent.
 - Keeping firmware override work locked behind backup, recovery, hash, and
   consent requirements.
+- Assessing owner-only G4AR root research readiness without pretending a
+  verified root chain or OpenWrt image exists.
 - Probing the G4AR USB-C data port before attempting a temporary 2.5GbE LAN
   bridge.
 
 Read the guide before enabling this mode:
 
 - [G4AR Firmware Lab Guide](docs/G4AR_FIRMWARE_LAB_GUIDE.md)
+- [G4AR Owner Root Research Guide](docs/G4AR_ROOT_RESEARCH_GUIDE.md)
 - [G4AR USB-C 2.5GbE Lab Guide](docs/G4AR_USB_C_2_5GBE_LAB.md)
 
 The local adapter URL is not the stock gateway login page. It is the base URL of
@@ -264,6 +267,8 @@ Important limitations:
 
 - The app does not provide firmware downloads.
 - The app does not write firmware by itself.
+- The app does not currently root the G4AR. No public, reproducible G4AR root
+  chain, complete restore path, or supported OpenWrt image has been verified.
 - The app does not provide transmit-power override controls.
 - Stock gateway firmware may not expose tower locking or LTE/NSA controls.
 - USB 3 and 2.5GbE are hardware-capable research targets, not a promise that

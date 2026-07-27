@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .g4ar_root import g4ar_root_research_status
+
 
 ADVANCED_MODEM_MODES = {
     "disabled": {
@@ -195,6 +197,14 @@ def advanced_modem_summary(settings: Any) -> dict[str, Any]:
                 adapter_configured,
                 built_in_adapter_selected=built_in_adapter_selected,
             ),
+            "root_access": {
+                "supported": False,
+                "status": "research_only_no_verified_chain",
+                "reason": (
+                    "No reproducible G4AR root chain or supported OpenWrt image is verified. "
+                    "Only read-only owner hardware research is available."
+                ),
+            },
             "tx_power_override": {
                 "supported": False,
                 "status": "blocked",
@@ -224,6 +234,7 @@ def advanced_modem_summary(settings: Any) -> dict[str, Any]:
         "g4ar_radio": g4ar_radio_summary(settings),
         "g4ar_unlock_lab": g4ar_firmware_lab_status(settings),
         "g4ar_firmware_lab": g4ar_firmware_lab_status(settings),
+        "g4ar_root_research": g4ar_root_research_status(),
         "upload_optimization": [
             "Aim directional antennas using SINR and RSRP trends, not bars alone.",
             "Compare nearby cells on the tower map before applying any lock.",
