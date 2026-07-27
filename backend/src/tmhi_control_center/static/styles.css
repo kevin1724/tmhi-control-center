@@ -375,8 +375,7 @@ summary:focus-visible {
 
 .check-item,
 .insight-card,
-.playbook-card,
-.adapter-mini-guide {
+.playbook-card {
   min-width: 0;
   padding: 12px;
   border: 1px solid var(--line);
@@ -406,8 +405,7 @@ summary:focus-visible {
 
 .check-item strong,
 .insight-card strong,
-.playbook-card strong,
-.adapter-mini-guide strong {
+.playbook-card strong {
   display: block;
   overflow-wrap: anywhere;
 }
@@ -415,8 +413,7 @@ summary:focus-visible {
 .check-item p,
 .check-item small,
 .insight-card p,
-.playbook-card p,
-.adapter-mini-guide p {
+.playbook-card p {
   margin: 5px 0 0;
   color: var(--muted);
   line-height: 1.45;
@@ -466,41 +463,11 @@ summary:focus-visible {
   color: var(--ink);
 }
 
-.adapter-guide-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.8fr);
-  gap: 16px;
-  align-items: start;
-}
-
-.adapter-guide h4,
-.adapter-mini-guide h4 {
-  margin: 0 0 8px;
-}
-
 .numbered-list {
   display: grid;
   gap: 8px;
   margin: 0;
   padding-left: 22px;
-}
-
-.code-chip-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 8px 0 14px;
-}
-
-.code-chip-list code {
-  max-width: 100%;
-  padding: 5px 8px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  color: var(--ink);
-  background: var(--surface);
-  font-size: 13px;
-  overflow-wrap: anywhere;
 }
 
 .insight-list--compact {
@@ -1399,161 +1366,6 @@ summary:focus-visible {
   background: var(--red-soft);
 }
 
-.adapter-mini-guide {
-  margin-bottom: 14px;
-}
-
-.usb-lab-panel {
-  display: grid;
-  gap: 14px;
-  margin-top: 18px;
-  padding-top: 18px;
-  border-top: 1px solid var(--line);
-}
-
-.usb-lab-header,
-.usb-lab-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.usb-lab-header h4 {
-  margin: 3px 0 0;
-  color: var(--ink);
-  font-size: 18px;
-}
-
-.usb-lab-summary {
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.5;
-}
-
-.usb-lab-path {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-  padding: 11px 12px;
-  border-block: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 800;
-  text-align: center;
-}
-
-.usb-lab-path span:nth-child(even) {
-  color: var(--accent);
-  font-size: 17px;
-}
-
-.usb-check-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.usb-check-grid > .empty-state {
-  grid-column: 1 / -1;
-}
-
-.usb-check {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 2px 7px;
-  align-items: center;
-  min-width: 0;
-  padding: 9px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface-soft);
-}
-
-.usb-check-indicator {
-  grid-row: 1 / 3;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--muted);
-}
-
-.usb-check.is-pass .usb-check-indicator {
-  background: var(--green);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 14%, transparent);
-}
-
-.usb-check span:not(.usb-check-indicator),
-.usb-check strong {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.usb-check span:not(.usb-check-indicator) {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.usb-check strong {
-  color: var(--ink);
-  font-size: 13px;
-}
-
-.usb-device-list {
-  display: grid;
-  gap: 8px;
-}
-
-.usb-device {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 7px 12px;
-  padding: 11px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-}
-
-.usb-device > div {
-  display: grid;
-  gap: 2px;
-}
-
-.usb-device strong,
-.usb-device small,
-.usb-device p {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.usb-device small,
-.usb-device p {
-  color: var(--muted);
-}
-
-.usb-device-link {
-  align-self: center;
-  color: var(--green);
-}
-
-.usb-device p {
-  grid-column: 1 / -1;
-  margin: 0;
-  font-size: 13px;
-}
-
-.usb-lab-actions {
-  justify-content: flex-start;
-  flex-wrap: wrap;
-}
-
-.usb-lab-actions small {
-  flex: 1 1 260px;
-  color: var(--muted);
-  line-height: 1.4;
-}
-
 .firmware-gate {
   display: grid;
   gap: 12px;
@@ -1562,16 +1374,144 @@ summary:focus-visible {
   border-top: 1px solid var(--line);
 }
 
+.lab-workflow {
+  display: grid;
+  gap: 18px;
+}
+
+.lab-step-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-block: 1px solid var(--line);
+}
+
+.lab-step {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.lab-step + .lab-step {
+  border-left: 1px solid var(--line);
+}
+
+.lab-step > span,
+.lab-step-number,
+.lab-advanced-disclosure > summary > span {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--pink);
+  border-radius: 50%;
+  color: var(--pink);
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.lab-step p {
+  min-width: 0;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.lab-step strong {
+  color: var(--ink);
+}
+
+.lab-step-list--settings {
+  grid-template-columns: 1fr;
+  margin-block: 16px 12px;
+}
+
+.lab-step-list--settings .lab-step {
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.lab-step-list--settings .lab-step > div p {
+  margin-top: 3px;
+}
+
+.lab-enable-switch {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.lab-preferences {
+  margin-top: 14px;
+}
+
+.lab-option-disclosure {
+  margin-top: 12px;
+  padding-block: 10px;
+  border-block: 1px solid var(--line);
+}
+
+.lab-option-disclosure > summary {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.backup-reminder-toggle {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.lab-advanced-disclosure {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.lab-advanced-disclosure > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+
+.lab-advanced-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.lab-advanced-disclosure > summary::after {
+  content: "+";
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 22px;
+  font-weight: 500;
+}
+
+.lab-advanced-disclosure[open] > summary::after {
+  content: "-";
+}
+
+.lab-advanced-disclosure > p {
+  margin: 10px 0 0 40px;
+  color: var(--muted);
+}
+
 .firmware-backup-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 12px;
   align-items: start;
   margin-top: 16px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface-soft);
+  padding: 18px 0;
+  border-block: 1px solid var(--line);
 }
 
 .firmware-backup-panel p {
@@ -1582,7 +1522,19 @@ summary:focus-visible {
 
 .firmware-backup-panel .inline-status,
 .firmware-backup-panel .backup-list {
-  grid-column: 1 / -1;
+  grid-column: 2 / -1;
+}
+
+.firmware-backup-panel .inline-status {
+  justify-content: flex-start;
+  min-height: 0;
+  padding: 0;
+  border-radius: 0;
+  color: var(--muted);
+  font-weight: 650;
+  line-height: 1.45;
+  white-space: normal;
+  text-align: left;
 }
 
 .root-research-panel {
@@ -1731,7 +1683,8 @@ summary:focus-visible {
 
 .backup-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
   gap: 8px;
   padding: 10px;
   border: 1px solid var(--line);
@@ -1759,6 +1712,18 @@ summary:focus-visible {
   margin: 0;
   color: var(--muted);
   font-size: 13px;
+}
+
+.backup-download {
+  min-width: 124px;
+}
+
+.backup-limitation {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--amber);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .field--inline {
@@ -2300,8 +2265,42 @@ th {
   }
 
   .homelab-hero,
-  .adapter-guide-grid {
+  .lab-step-list {
     grid-template-columns: 1fr;
+  }
+
+  .lab-step + .lab-step {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+
+  .lab-step-list--settings .lab-step {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .lab-enable-switch {
+    grid-column: 2;
+    justify-self: start;
+    white-space: normal;
+  }
+
+  .firmware-backup-panel {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .firmware-backup-panel > .button,
+  .firmware-backup-panel .inline-status,
+  .firmware-backup-panel .backup-list {
+    grid-column: 2;
+  }
+
+  .backup-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .backup-download {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 
   .metric-grid {
@@ -2342,10 +2341,6 @@ th {
     border-right: 0;
   }
 
-  .usb-check-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .root-evidence-grid,
   .root-check-grid {
     grid-template-columns: 1fr;
@@ -2359,18 +2354,6 @@ th {
     padding-left: 0;
     border-top: 1px solid var(--line);
     border-left: 0;
-  }
-
-  .usb-lab-header {
-    align-items: flex-start;
-  }
-
-  .usb-lab-path {
-    grid-template-columns: 1fr;
-  }
-
-  .usb-lab-path span:nth-child(even) {
-    transform: rotate(90deg);
   }
 
   .signal-ring {

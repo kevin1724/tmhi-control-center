@@ -9,37 +9,31 @@ ADVANCED_MODEM_MODES = {
     "disabled": {
         "label": "Disabled",
         "description": "Use stock TMHI gateway APIs only.",
-        "adapter_required": False,
     },
     "openwrt_rooter": {
-        "label": "OpenWrt / ROOTer",
-        "description": "For user-owned routers that expose modem controls through OpenWrt or ROOTer.",
-        "adapter_required": True,
+        "label": "Legacy mode",
+        "description": "Retained only to migrate older saved settings to Docker-only mode.",
     },
     "modemmanager": {
-        "label": "ModemManager",
-        "description": "For Linux hosts exposing owned modems through ModemManager/QMI/MBIM tooling.",
-        "adapter_required": True,
+        "label": "Legacy mode",
+        "description": "Retained only to migrate older saved settings to Docker-only mode.",
     },
     "custom_adapter": {
-        "label": "Custom local adapter",
-        "description": "For a local adapter service that safely wraps supported vendor modem commands.",
-        "adapter_required": True,
+        "label": "Legacy mode",
+        "description": "Retained only to migrate older saved settings to Docker-only mode.",
     },
     "g4ar_unlock_lab": {
-        "label": "G4AR unlock / radio lab",
+        "label": "G4AR Docker lab",
         "description": (
-            "For owner-controlled Arcadyan TMO-G4AR units where a local adapter can "
-            "research backups, recovery, firmware overrides, and LTE/NSA radio profiles."
+            "Docker-only recovery, radio research, and safety tools for an "
+            "owner-controlled Arcadyan TMO-G4AR."
         ),
-        "adapter_required": True,
     },
     "g4ar_firmware_lab": {
         "label": "G4AR firmware lab (legacy)",
         "description": (
             "Legacy saved value for G4AR unlock / radio lab."
         ),
-        "adapter_required": True,
     },
 }
 
@@ -69,7 +63,7 @@ G4AR_RADIO_PROFILES = {
     "prefer_lte_anchor_nsa": {
         "label": "Prefer LTE anchor / 5G NSA",
         "description": (
-            "Adapter-facing research profile for trying LTE anchor plus 5G NR NSA "
+            "Research profile for trying LTE anchor plus 5G NR NSA "
             "when that performs better than 5G Standalone."
         ),
     },
@@ -110,14 +104,13 @@ G4AR_FIRMWARE_WARNING = (
 
 
 def advanced_modem_summary(settings: Any) -> dict[str, Any]:
-    mode = settings.advanced_modem_mode
+    mode = (
+        "g4ar_unlock_lab"
+        if settings.advanced_modem_mode in G4AR_LAB_MODES
+        else "disabled"
+    )
     mode_info = ADVANCED_MODEM_MODES.get(mode, ADVANCED_MODEM_MODES["disabled"])
     enabled = mode != "disabled" and settings.advanced_modem_acknowledged
-    adapter_configured = bool(settings.advanced_modem_control_url)
-    effective_control_url = settings.advanced_modem_control_url or (
-        BUILT_IN_DOCKER_ADAPTER_URL if mode != "disabled" else ""
-    )
-    built_in_adapter_selected = effective_control_url.rstrip("/") == BUILT_IN_DOCKER_ADAPTER_URL
 
     return {
         "mode": mode,
@@ -125,12 +118,7 @@ def advanced_modem_summary(settings: Any) -> dict[str, Any]:
         "description": mode_info["description"],
         "enabled": enabled,
         "acknowledged": settings.advanced_modem_acknowledged,
-        "control_url": settings.advanced_modem_control_url,
-        "effective_control_url": effective_control_url,
-        "default_control_url": BUILT_IN_DOCKER_ADAPTER_URL,
-        "built_in_adapter_selected": built_in_adapter_selected,
-        "control_url_configured": adapter_configured or bool(effective_control_url),
-        "requires_adapter": mode_info["adapter_required"],
+        "docker_direct": True,
         "skip_stock_backup": settings.advanced_skip_stock_backup,
         "available_modes": [
             {
@@ -139,63 +127,32 @@ def advanced_modem_summary(settings: Any) -> dict[str, Any]:
                 "description": value["description"],
             }
             for key, value in ADVANCED_MODEM_MODES.items()
+            if key in {"disabled", "g4ar_unlock_lab"}
         ],
         "capabilities": {
-            "cell_lock": capability_status(
-                enabled,
-                adapter_configured,
-                built_in_adapter_selected=built_in_adapter_selected,
-            ),
-            "band_lock": capability_status(
-                enabled,
-                adapter_configured,
-                built_in_adapter_selected=built_in_adapter_selected,
-            ),
-            "cell_scan": capability_status(
-                enabled,
-                adapter_configured,
-                built_in_adapter_selected=built_in_adapter_selected,
-            ),
+            "cell_lock": capability_status(enabled),
+            "band_lock": capability_status(enabled),
+            "cell_scan": capability_status(enabled),
             "lte_anchor_override": g4ar_capability_status(
-                settings.advanced_modem_mode,
-                enabled,
-                adapter_configured,
-                built_in_adapter_selected=built_in_adapter_selected,
+                settings.advanced_modem_mode, enabled
             ),
             "radio_mode_override": g4ar_capability_status(
-                settings.advanced_modem_mode,
-                enabled,
-                adapter_configured,
-                built_in_adapter_selected=built_in_adapter_selected,
+                settings.advanced_modem_mode, enabled
             ),
             "usb_hardware_probe": g4ar_capability_status(
-                settings.advanced_modem_mode,
-                enabled,
-                adapter_configured,
-                built_in_adapter_selected=built_in_adapter_selected,
+                settings.advanced_modem_mode, enabled
             ),
             "usb_ethernet_bridge": g4ar_capability_status(
-                settings.advanced_modem_mode,
-                enabled,
-                adapter_configured,
-                built_in_adapter_selected=built_in_adapter_selected,
+                settings.advanced_modem_mode, enabled
             ),
-            "upload_priority_qos": capability_status(
-                enabled,
-                adapter_configured,
-                built_in_adapter_selected=built_in_adapter_selected,
-            ),
+            "upload_priority_qos": capability_status(enabled),
             "stock_firmware_backup": firmware_capability_status(
                 settings.advanced_modem_mode,
                 enabled,
-                adapter_configured,
-                built_in_adapter_selected=built_in_adapter_selected,
             ),
             "custom_firmware_flash": firmware_flash_status(
                 settings.advanced_modem_mode,
                 enabled,
-                adapter_configured,
-                built_in_adapter_selected=built_in_adapter_selected,
             ),
             "root_access": {
                 "supported": False,
@@ -227,8 +184,8 @@ def advanced_modem_summary(settings: Any) -> dict[str, Any]:
             ],
             "notes": [
                 "This is QoS/SQM planning, not transmit-power control.",
-                "A local adapter must apply the profile on supported router firmware.",
-                "The Docker default adapter URL is only a built-in coordinator unless hardware-specific bridge tooling is installed.",
+                "Stock G4AR firmware does not expose a Docker command for applying this profile.",
+                "The selection is saved as research intent for before/after comparisons.",
             ],
         },
         "g4ar_radio": g4ar_radio_summary(settings),
@@ -241,7 +198,7 @@ def advanced_modem_summary(settings: Any) -> dict[str, Any]:
             "Use SQM/QoS to keep upload queues short when download traffic is heavy.",
             "On owned G4AR lab units, compare Auto, LTE anchor/5G NSA, LTE-only, and NR SA profiles.",
             "Prefer supported band/cell locks from the modem vendor or router firmware.",
-            "Use the built-in Docker adapter URL for health checks and defaults; use a hardware bridge for real modem commands.",
+            "Docker recovery bundles preserve the stock API data before experiments.",
             "Retest upload, ping, and packet loss after each placement or antenna change.",
         ],
         "warnings": [
@@ -254,9 +211,6 @@ def advanced_modem_summary(settings: Any) -> dict[str, Any]:
 
 def capability_status(
     enabled: bool,
-    adapter_configured: bool,
-    *,
-    built_in_adapter_selected: bool = False,
 ) -> dict[str, Any]:
     if not enabled:
         return {
@@ -264,54 +218,16 @@ def capability_status(
             "status": "disabled",
             "reason": "Enable the unlock/radio lab and acknowledge the risk warning first.",
         }
-    if not adapter_configured:
-        return {
-            "supported": False,
-            "status": "adapter_required",
-            "reason": "Configure a local adapter URL before sending modem control requests.",
-        }
-    if built_in_adapter_selected:
-        return {
-            "supported": False,
-            "status": "hardware_bridge_required",
-            "reason": (
-                "The built-in Docker adapter is reachable for health checks and "
-                "defaults, but real modem commands require trusted hardware bridge tooling."
-            ),
-        }
     return {
-        "supported": True,
-        "status": "adapter_ready",
-        "reason": "Adapter mode is configured. Command support still depends on the modem.",
+        "supported": False,
+        "status": "not_exposed_by_stock_api",
+        "reason": "Stock G4AR firmware does not expose this command to Docker.",
     }
 
 
 def firmware_capability_status(
     mode: str,
     enabled: bool,
-    adapter_configured: bool,
-    *,
-    built_in_adapter_selected: bool = False,
-) -> dict[str, Any]:
-    if mode not in G4AR_LAB_MODES:
-        return {
-            "supported": False,
-            "status": "mode_required",
-            "reason": "Select G4AR unlock / radio lab mode first.",
-        }
-    return capability_status(
-        enabled,
-        adapter_configured,
-        built_in_adapter_selected=built_in_adapter_selected,
-    )
-
-
-def firmware_flash_status(
-    mode: str,
-    enabled: bool,
-    adapter_configured: bool,
-    *,
-    built_in_adapter_selected: bool = False,
 ) -> dict[str, Any]:
     if mode not in G4AR_LAB_MODES:
         return {
@@ -320,50 +236,49 @@ def firmware_flash_status(
             "reason": "Select G4AR unlock / radio lab mode first.",
         }
     if not enabled:
-        return capability_status(
-            enabled,
-            adapter_configured,
-            built_in_adapter_selected=built_in_adapter_selected,
-        )
-    if not adapter_configured:
-        return capability_status(
-            enabled,
-            adapter_configured,
-            built_in_adapter_selected=built_in_adapter_selected,
-        )
-    if built_in_adapter_selected:
-        return capability_status(
-            enabled,
-            adapter_configured,
-            built_in_adapter_selected=built_in_adapter_selected,
-        )
+        return {
+            "supported": False,
+            "status": "disabled",
+            "reason": "Enable the G4AR Docker lab and acknowledge the warning first.",
+        }
+    return {
+        "supported": True,
+        "status": "docker_recovery_bundle_ready",
+        "reason": (
+            "Docker can save a downloadable stock-API recovery bundle. Raw firmware "
+            "and flash partitions are not included."
+        ),
+    }
+
+
+def firmware_flash_status(
+    mode: str,
+    enabled: bool,
+) -> dict[str, Any]:
+    if mode not in G4AR_LAB_MODES:
+        return {
+            "supported": False,
+            "status": "mode_required",
+            "reason": "Select G4AR unlock / radio lab mode first.",
+        }
+    if not enabled:
+        return capability_status(enabled)
     return {
         "supported": False,
-        "status": "consent_and_recovery_required",
+        "status": "unavailable_no_verified_writer",
         "reason": (
-            "Flashing stays locked until stock backup hash, recovery verification, "
-            "firmware hash, and typed consent are provided."
+            "Docker has no verified G4AR firmware writer or raw partition recovery path."
         ),
     }
 
 
 def g4ar_firmware_lab_status(settings: Any) -> dict[str, Any]:
     active = settings.advanced_modem_mode in G4AR_LAB_MODES
-    built_in_adapter_selected = (
-        settings.advanced_modem_control_url.rstrip("/") == BUILT_IN_DOCKER_ADAPTER_URL
-    )
-    adapter_ready = active and settings.advanced_modem_acknowledged and bool(
-        settings.advanced_modem_control_url
-    ) and not built_in_adapter_selected
-    effective_control_url = settings.advanced_modem_control_url or (
-        BUILT_IN_DOCKER_ADAPTER_URL if active else ""
-    )
+    docker_ready = active and settings.advanced_modem_acknowledged
     return {
         "device": "Arcadyan TMO-G4AR",
         "active": active,
-        "adapter_ready": adapter_ready,
-        "built_in_adapter_selected": built_in_adapter_selected,
-        "effective_control_url": effective_control_url,
+        "docker_ready": docker_ready,
         "stock_backup_skipped": settings.advanced_skip_stock_backup,
         "consent_phrase": G4AR_FLASH_CONSENT_PHRASE,
         "flash_warning": G4AR_FIRMWARE_WARNING,
@@ -375,7 +290,8 @@ def g4ar_firmware_lab_status(settings: Any) -> dict[str, Any]:
         ),
         "required_before_flash": [
             "Identify exact TMO-G4AR hardware revision and current firmware version.",
-            "Create a complete local stock firmware backup.",
+            "Create a Docker recovery bundle for stock API settings and inventory.",
+            "Obtain a separate complete raw partition backup before any future flashing.",
             "Skipping the setup reminder does not replace a verified stock backup.",
             "Back up calibration, modem identity, MAC addresses, IMEI-related metadata, and config/NVRAM.",
             "Store SHA-256 hashes for stock backup and custom firmware image.",
@@ -388,9 +304,8 @@ def g4ar_firmware_lab_status(settings: Any) -> dict[str, Any]:
             "Compare download, upload, ping, SINR, RSRP, RSRQ, band, PCI, and serving cell after each profile change.",
         ],
         "backup_artifacts": [
-            "stock-firmware.bin",
-            "partition-table.txt",
-            "calibration-and-identity-backup.tar",
+            "gateway-snapshot.json",
+            "wifi-configuration.json",
             "restore-notes.md",
             "SHA256SUMS",
         ],
@@ -417,8 +332,8 @@ def g4ar_radio_summary(settings: Any) -> dict[str, Any]:
             for key, value in G4AR_RADIO_PROFILES.items()
         ],
         "notes": [
-            "LTE/NSA override is an adapter-facing research profile, not proof that the stock gateway exposes a public command.",
-            "The app stores intent and validates safety gates; a local adapter must implement device-specific commands.",
+            "LTE/NSA selection is research intent, not proof that the stock gateway exposes a public command.",
+            "Docker stores the selection for before/after comparisons but does not apply unsupported modem commands.",
         ],
     }
 
@@ -426,9 +341,6 @@ def g4ar_radio_summary(settings: Any) -> dict[str, Any]:
 def g4ar_capability_status(
     mode: str,
     enabled: bool,
-    adapter_configured: bool,
-    *,
-    built_in_adapter_selected: bool = False,
 ) -> dict[str, Any]:
     if mode not in G4AR_LAB_MODES:
         return {
@@ -436,11 +348,7 @@ def g4ar_capability_status(
             "status": "mode_required",
             "reason": "Select G4AR unlock / radio lab mode first.",
         }
-    return capability_status(
-        enabled,
-        adapter_configured,
-        built_in_adapter_selected=built_in_adapter_selected,
-    )
+    return capability_status(enabled)
 
 
 def validate_flash_consent(payload: dict[str, Any]) -> list[str]:

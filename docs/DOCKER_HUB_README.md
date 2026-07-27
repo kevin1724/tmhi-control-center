@@ -9,8 +9,7 @@ workflows.
 
 It also includes a Homelab control room with a setup score, next-best-action
 guidance, signal and antenna coaching, router offload/SQM planning, redacted
-snapshot export, and a plain-English local adapter guide for owned G4AR lab
-hardware.
+snapshot export, and a direct Docker recovery workflow for owned G4AR lab hardware.
 
 This is an unofficial community project. It is not affiliated with, endorsed by,
 or supported by T-Mobile.
@@ -155,24 +154,20 @@ secondhand units purchased outside of a carrier lease.
 
 The lab can store:
 
-- Local adapter URL.
 - LTE anchor / 5G NSA, LTE-only, 5G SA, or scan-only intent.
-- Stock firmware backup metadata.
-- Optional stock-backup reminder suppression while exploring the UI.
-- SHA-256 backup and firmware hashes.
+- A downloadable stock-API recovery bundle with gateway and Wi-Fi inventory.
+- SHA-256 checksums, a manifest, and recovery notes.
+- Optional recovery-bundle reminder suppression while exploring the UI.
 - Risk acknowledgement and consent-gate state.
 
-The local adapter URL is not the stock gateway login page. When this Docker
-image is running, the app automatically uses its built-in Docker adapter URL,
-`http://127.0.0.1:8000`, so most users can leave the field blank.
+No second service or URL is required. Save the gateway IP and admin password,
+enable the owner lab, then create and download the recovery ZIP from `Settings`.
+Bundles are stored in `/data/firmware-backups`.
 
-The built-in Docker adapter is useful for health checks and default setup. Real
-firmware backup, scan, tower lock, or radio-profile commands still require a
-trusted hardware bridge controlled by the user, such as an OpenWrt/ROOTer
-router, Raspberry Pi, mini PC, or Linux host. The adapter is expected to expose
-narrow endpoints like `GET /health`, `POST /g4ar/firmware/backup`, and the
-read-only `GET /g4ar/usb/probe`. Docker cannot inspect devices attached inside
-the G4AR unless a gateway-side hardware adapter reports them.
+The bundle is not a raw firmware image. Stock G4AR firmware does not expose
+eMMC, boot, calibration, identity, or NVRAM partitions through its local network
+API, so a separate verified raw partition backup is still required before any
+future firmware-writing research.
 
 Skipping the stock-backup reminder does not unlock flashing. Firmware override
 still requires verified backup, recovery, hashes, and exact consent.
@@ -180,7 +175,7 @@ still requires verified backup, recovery, hashes, and exact consent.
 Important limitations:
 
 - This image does not provide firmware downloads.
-- This image does not write firmware by itself.
+- This image does not read or write raw firmware partitions.
 - This image does not currently root the G4AR. No reproducible G4AR root chain,
   complete restore path, or supported OpenWrt image has been verified.
 - This image does not increase transmit power.

@@ -12,7 +12,7 @@
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
     <link rel="manifest" href="/static/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260726-conditional-telemetry-1" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260726-docker-lab-1" />
   </head>
   <body>
     <div class="app-shell">
@@ -569,30 +569,19 @@
               <div id="homelabPlaybook" class="playbook-grid"></div>
             </section>
 
-            <section class="workspace-section adapter-guide" aria-labelledby="adapterGuideHeading">
+            <section class="workspace-section lab-workflow" aria-labelledby="dockerLabHeading">
               <div class="section-heading">
                 <div>
-                  <p class="eyebrow">G4AR Lab</p>
-                  <h3 id="adapterGuideHeading">Local Adapter URL</h3>
+                  <p class="eyebrow">Docker Lab</p>
+                  <h3 id="dockerLabHeading">Simple G4AR Workflow</h3>
                 </div>
-                <span id="adapterGuideTag" class="tag tag--muted">Setup needed</span>
+                <span class="tag tag--good">Docker direct</span>
               </div>
-              <p id="adapterGuideSummary" class="coach-lead">
-                A local adapter URL is a LAN-only service running on hardware you control.
-              </p>
-              <div class="adapter-guide-grid">
-                <div>
-                  <h4>How to get one</h4>
-                  <ol id="adapterHowToList" class="numbered-list"></ol>
-                </div>
-                <div>
-                  <h4>Example URLs</h4>
-                  <div id="adapterExampleList" class="code-chip-list"></div>
-                  <h4>Adapter endpoints</h4>
-                  <div id="adapterEndpointList" class="code-chip-list"></div>
-                </div>
+              <div class="lab-step-list">
+                <div class="lab-step"><span>1</span><p><strong>Save gateway login</strong> so Docker can read the stock G4AR API.</p></div>
+                <div class="lab-step"><span>2</span><p><strong>Enable owner lab</strong> and accept the hardware warning in Settings.</p></div>
+                <div class="lab-step"><span>3</span><p><strong>Create a recovery bundle</strong> and download the ZIP before experiments.</p></div>
               </div>
-              <div id="adapterSafetyList" class="insight-list insight-list--compact"></div>
             </section>
           </section>
 
@@ -872,7 +861,7 @@
               </fieldset>
 
               <fieldset class="tool-group settings-card settings-card--wide">
-                <legend>G4AR Unlock / Radio Lab</legend>
+                <legend>G4AR Docker Lab</legend>
                 <div class="warning-panel">
                   <strong>Owned hardware research warning</strong>
                   <p>
@@ -882,74 +871,49 @@
                     service terms, or create RF compliance problems.
                   </p>
                 </div>
-                <div class="control-grid">
-                  <label class="field">
-                    <span>Control mode</span>
-                    <select id="advancedModemMode">
-                      <option value="disabled">Disabled</option>
-                      <option value="openwrt_rooter">OpenWrt / ROOTer</option>
-                      <option value="modemmanager">ModemManager</option>
-                      <option value="custom_adapter">Custom local adapter</option>
-                      <option value="g4ar_unlock_lab">G4AR unlock / radio lab</option>
-                    </select>
-                  </label>
-                  <label class="field">
-                    <span>Upload priority</span>
-                    <select id="advancedUploadProfile">
-                      <option value="balanced">Balanced</option>
-                      <option value="prefer_upload">Prefer upload</option>
-                      <option value="low_latency_upload">Low-latency upload</option>
-                    </select>
-                  </label>
-                  <label class="field">
-                    <span>G4AR radio profile</span>
-                    <select id="advancedRadioProfile">
-                      <option value="auto">Auto</option>
-                      <option value="prefer_lte_anchor_nsa">Prefer LTE anchor / 5G NSA</option>
-                      <option value="lte_only_test">LTE-only test</option>
-                      <option value="nr_sa">5G Standalone</option>
-                      <option value="scan_only">Scan only</option>
-                    </select>
-                  </label>
-                  <label class="field">
-                    <span>Local adapter URL</span>
-                    <input
-                      id="advancedModemControlUrl"
-                      type="url"
-                      inputmode="url"
-                      placeholder="Auto: http://127.0.0.1:8000"
-                    />
-                    <small>Leave blank to use the built-in Docker adapter.</small>
-                  </label>
-                </div>
-                <div class="adapter-mini-guide">
-                  <strong>What is this URL?</strong>
-                  <p>
-                    Docker auto-fills its own built-in adapter URL. That removes the setup
-                    guesswork for health checks and lab defaults. Real firmware backup,
-                    tower lock, cell scan, or radio-profile commands still need trusted
-                    hardware bridge tooling attached to the modem side of your lab setup.
-                  </p>
-                  <div class="code-chip-list">
-                    <code>http://127.0.0.1:8000</code>
-                    <code>http://router.local:8080</code>
-                    <code>http://192.168.1.2:8765</code>
-                    <code>GET /health</code>
-                    <code>POST /g4ar/firmware/backup</code>
+                <div class="lab-step-list lab-step-list--settings">
+                  <div class="lab-step">
+                    <span>1</span>
+                    <div>
+                      <strong>Enable the owner lab</strong>
+                      <p>Docker connects directly to the gateway IP already configured in this app.</p>
+                    </div>
+                    <label class="switch-row lab-enable-switch">
+                      <span>Owner lab enabled</span>
+                      <input id="advancedLabEnabled" type="checkbox" />
+                    </label>
                   </div>
                 </div>
                 <label class="check-row">
                   <input id="advancedModemAcknowledge" type="checkbox" />
-                  <span>I own this G4AR and accept the firmware override, LTE/NSA experiment, warranty, carrier-term, and RF compliance risk.</span>
+                  <span>I own this G4AR and accept the firmware, warranty, carrier-term, permanent-brick, and RF compliance risk.</span>
                 </label>
-                <label class="check-row">
-                  <input id="skipStockBackupReminder" type="checkbox" />
-                  <span>Skip the stock backup reminder for now. Firmware override still requires verified backup, recovery, hashes, and consent.</span>
-                </label>
-                <dl id="advancedModemStatus" class="detail-list detail-list--compact"></dl>
+                <details class="lab-option-disclosure">
+                  <summary>Optional comparison profiles</summary>
+                  <div class="control-grid lab-preferences">
+                    <label class="field">
+                      <span>Upload priority</span>
+                      <select id="advancedUploadProfile">
+                        <option value="balanced">Balanced</option>
+                        <option value="prefer_upload">Prefer upload</option>
+                        <option value="low_latency_upload">Low-latency upload</option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span>G4AR radio profile</span>
+                      <select id="advancedRadioProfile">
+                        <option value="auto">Auto</option>
+                        <option value="prefer_lte_anchor_nsa">Prefer LTE anchor / 5G NSA</option>
+                        <option value="lte_only_test">LTE-only test</option>
+                        <option value="nr_sa">5G Standalone</option>
+                        <option value="scan_only">Scan only</option>
+                      </select>
+                    </label>
+                  </div>
+                </details>
                 <div class="button-row">
                   <button id="saveAdvancedModemButton" class="button button--primary" type="button">
-                    Save Unlock Lab
+                    Save Lab Settings
                   </button>
                   <a
                     class="button button--secondary"
@@ -957,61 +921,35 @@
                     target="_blank"
                     rel="noreferrer"
                   >
-                    Open Setup Guide
+                    Open Docker Lab Guide
                   </a>
                 </div>
-
-                <section class="usb-lab-panel" aria-labelledby="usbLabHeading">
-                  <div class="usb-lab-header">
-                    <div>
-                      <span class="eyebrow">USB-C network lab</span>
-                      <h4 id="usbLabHeading">2.5 GbE Data Port</h4>
-                    </div>
-                    <span id="usbLabTag" class="tag tag--muted">Not probed</span>
-                  </div>
-                  <p id="usbLabSummary" class="usb-lab-summary">
-                    Check the G4AR data port, USB speed, Ethernet driver, interface, and link.
-                  </p>
-                  <div class="usb-lab-path" aria-label="USB Ethernet path">
-                    <span>G4AR data port</span>
-                    <span aria-hidden="true">&#8594;</span>
-                    <span>AX88279</span>
-                    <span aria-hidden="true">&#8594;</span>
-                    <span>2.5GbE LAN</span>
-                  </div>
-                  <dl id="usbPlatformDetails" class="detail-list detail-list--compact"></dl>
-                  <div id="usbProbeChecks" class="usb-check-grid"></div>
-                  <div id="usbDeviceList" class="usb-device-list"></div>
-                  <div class="usb-lab-actions">
-                    <button id="usbProbeButton" class="button button--secondary" type="button">
-                      Probe Port
-                    </button>
-                    <a
-                      class="button button--secondary"
-                      href="https://github.com/kevin1724/tmhi-control-center/blob/main/docs/G4AR_USB_C_2_5GBE_LAB.md"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Open Guide
-                    </a>
-                    <small>Read-only probe. No bridge or firmware settings are changed.</small>
-                  </div>
-                </section>
-
                 <div class="firmware-backup-panel">
+                  <span class="lab-step-number">2</span>
                   <div>
-                    <strong>Stock firmware backup</strong>
+                    <strong>Docker recovery bundle</strong>
                     <p>
-                      Uses the configured local adapter to create a backup from this exact
-                      G4AR, then saves the manifest and returned artifacts locally.
+                      Saves firmware and hardware inventory, radio data, Wi-Fi settings,
+                      recovery notes, and checksums to Docker. Download the ZIP when complete.
                     </p>
+                    <small>Stock firmware does not expose a raw flash image. This bundle cannot restore eMMC partitions.</small>
                   </div>
-                  <button id="firmwareBackupButton" class="button button--secondary" type="button">
-                    Create Stock Backup
+                  <button id="firmwareBackupButton" class="button button--primary" type="button">
+                    Create Recovery Bundle
                   </button>
                   <p id="firmwareBackupStatus" class="inline-status"></p>
                   <div id="firmwareBackupList" class="backup-list"></div>
                 </div>
+
+                <label class="check-row backup-reminder-toggle">
+                  <input id="skipStockBackupReminder" type="checkbox" />
+                  <span>Skip this reminder for now. Advanced firmware work still requires a separate raw partition backup.</span>
+                </label>
+
+                <details class="lab-advanced-disclosure">
+                  <summary><span>3</span> Advanced root and firmware research</summary>
+                  <p>Open only after saving a Docker recovery bundle and reading the safety guide.</p>
+                  <dl id="advancedModemStatus" class="detail-list detail-list--compact"></dl>
 
                 <section class="root-research-panel" aria-labelledby="rootResearchHeading">
                   <div class="root-research-header">
@@ -1126,21 +1064,20 @@
                   <div class="warning-panel warning-panel--danger">
                     <strong>G4AR firmware override gate</strong>
                     <p>
-                      Firmware override can permanently brick the gateway. This project will not
-                      write firmware unless a local adapter proves stock backup, recovery, image
-                      hashes, and exact consent immediately before the operation.
+                      Docker has no verified G4AR firmware writer. The recovery bundle above is
+                      not a raw partition backup and does not unlock this gate.
                     </p>
                   </div>
                   <dl id="firmwareLabStatus" class="detail-list detail-list--compact"></dl>
                   <div class="control-grid">
                     <label class="field">
-                      <span>Stock backup SHA-256</span>
+                      <span>Raw partition backup SHA-256</span>
                       <input
                         id="firmwareBackupSha256"
                         type="text"
                         inputmode="text"
                         maxlength="64"
-                        placeholder="64-character backup hash"
+                        placeholder="Not the Docker recovery bundle hash"
                       />
                     </label>
                     <label class="field">
@@ -1156,7 +1093,7 @@
                   </div>
                   <label class="check-row">
                     <input id="firmwareBackupVerified" type="checkbox" />
-                    <span>Stock firmware backup is complete and verified.</span>
+                    <span>A separate raw partition backup is complete and verified.</span>
                   </label>
                   <label class="check-row">
                     <input id="firmwareRecoveryVerified" type="checkbox" />
@@ -1179,6 +1116,7 @@
                     Arm Override Gate
                   </button>
                 </div>
+                </details>
               </fieldset>
 
               <fieldset class="tool-group settings-card">
@@ -1202,6 +1140,6 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-    <script src="/static/app.js?v=20260726-g4ar-root-research-1" defer></script>
+    <script src="/static/app.js?v=20260726-docker-lab-1" defer></script>
   </body>
 </html>

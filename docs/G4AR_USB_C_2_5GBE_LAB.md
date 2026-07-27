@@ -90,48 +90,13 @@ ethtool -i usb0
 Replace `usb0` with the interface actually reported by `ip -br link`. Useful
 driver names include `cdc_ncm`, `cdc_ether`, `ax88179_178a`, and `r8152`.
 
-The TMHI Control Center hardware adapter should expose:
-
-```text
-GET /g4ar/usb/probe
-```
-
-Example response:
-
-```json
-{
-  "port": {
-    "role": "host",
-    "speed_mbps": 5000,
-    "vbus": true
-  },
-  "devices": [
-    {
-      "vendor_id": "0b95",
-      "product_id": "2790",
-      "product": "AX88279 USB 2.5G Ethernet",
-      "usb_speed_mbps": 5000,
-      "driver": "cdc_ncm",
-      "interface": "usb0",
-      "carrier": true,
-      "link_speed_mbps": 2500,
-      "duplex": "full"
-    }
-  ],
-  "bridge": {
-    "name": "br-lan",
-    "members": ["lan1", "lan2"],
-    "usb_member": false
-  }
-}
-```
-
-Do not return serial numbers or MAC addresses. TMHI Control Center removes MAC
-addresses from the normalized response even if an adapter sends one.
+Record the USB role, bus speed, chipset, driver, interface name, carrier state,
+negotiated link speed, and current bridge members in private lab notes. Redact
+serial numbers and MAC addresses before sharing command output.
 
 ## Stage 3: Isolated Link Test
 
-Only continue when the website shows all of these as ready:
+Only continue when the command output confirms all of these:
 
 - USB host
 - USB 5 Gbps

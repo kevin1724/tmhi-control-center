@@ -51,12 +51,8 @@ installs from unknown sources. A signed release build will be added later.
   placement, tower notes, recovery discipline, and device inventory.
 - Runs connectivity probes and records events for troubleshooting outages.
 - Includes reboot safeguards from the original watchdog workflow.
-- Includes a G4AR Unlock / Radio Lab for owned Arcadyan TMO-G4AR gateways, with
-  explicit warnings, backup requirements, adapter-based controls, and consent
-  gates.
-- Adds a read-only G4AR USB-C 2.5GbE lab that checks USB host mode, 5Gbps
-  negotiation, Ethernet adapter detection, driver binding, interface creation,
-  carrier, link speed, and LAN bridge membership through a gateway-side adapter.
+- Includes a Docker-only G4AR owner lab with explicit warnings, downloadable
+  stock-API recovery bundles, SHA-256 checksums, and locked firmware controls.
 
 ## Who It Is For
 
@@ -81,8 +77,8 @@ what the local gateway API exposes.
 Planned project areas:
 
 - Standalone web frontend package.
-- Additional gateway adapters.
-- Safer local adapter tooling for owner-controlled modem labs.
+- Additional gateway model support.
+- Safer Docker-only recovery tooling for owner-controlled modem labs.
 
 The native Android app lives under [android/](android/). It runs locally on the
 phone while the user has the app open and intentionally does not include the
@@ -209,8 +205,7 @@ history reference.
 important notes about tower locking limitations.
 
 `Homelab` shows the setup score, next action, signal and antenna coach, router
-offload/SQM playbook, G4AR backup status, and a plain-English local adapter URL
-guide.
+offload/SQM playbook, and the direct Docker G4AR recovery workflow.
 
 `Diagnostics` shows connectivity probes, event history, raw gateway sections,
 and repeated probe sweeps.
@@ -226,11 +221,11 @@ advanced work safer and more organized, not to hide risk.
 
 Use the lab for:
 
-- Recording a local adapter URL.
-- Creating and listing stock firmware backups through a trusted local adapter.
-- Skipping the stock-backup setup reminder for now when you are only exploring
+- Creating and downloading a stock-API recovery bundle directly through Docker.
+- Recording gateway firmware, hardware, radio, Wi-Fi, and recovery context.
+- Skipping the recovery-bundle setup reminder for now when you are only exploring
   the UI.
-- Saving SHA-256 hashes for backup and firmware artifacts.
+- Saving SHA-256 checksums for every file in the recovery bundle.
 - Tracking LTE anchor / 5G NSA, LTE-only, 5G SA, and scan-only profile intent.
 - Keeping firmware override work locked behind backup, recovery, hash, and
   consent requirements.
@@ -245,28 +240,24 @@ Read the guide before enabling this mode:
 - [G4AR Owner Root Research Guide](docs/G4AR_ROOT_RESEARCH_GUIDE.md)
 - [G4AR USB-C 2.5GbE Lab Guide](docs/G4AR_USB_C_2_5GBE_LAB.md)
 
-The local adapter URL is not the stock gateway login page. It is the base URL of
-a small HTTP service. When the Docker app is running, TMHI Control Center
-automatically uses its built-in Docker adapter URL, `http://127.0.0.1:8000`, so
-most users can leave this field blank.
+There is no second service or URL to configure. TMHI Control Center uses the
+saved gateway IP and admin password to read the stock G4AR API, then stores the
+bundle under `/data/firmware-backups`. Each bundle can be downloaded as a ZIP
+from `Settings`.
 
-The built-in Docker adapter is useful for health checks and default setup. Real
-firmware backup, scan, tower lock, or radio-profile commands still require a
-trusted hardware bridge controlled by the user, such as an OpenWrt/ROOTer
-router, Raspberry Pi, mini PC, or Linux host attached to the modem lab hardware.
-TMHI Control Center only calls narrow endpoints such as `GET /health` and
-`POST /g4ar/firmware/backup`. The USB-C lab expects the gateway-side adapter to
-provide a read-only `GET /g4ar/usb/probe` endpoint. Docker running on another
-computer cannot inspect devices connected inside the G4AR.
+The Docker recovery bundle is useful, but it is not a raw firmware image. Stock
+G4AR firmware does not expose eMMC, boot, calibration, identity, or NVRAM
+partitions over its local network API. The bundle therefore does not satisfy the
+raw-backup requirement for firmware writing.
 
-The `Skip stock backup reminder for now` option only suppresses the readiness
+The `Skip this reminder for now` option only suppresses the readiness
 checklist reminder. It does not unlock firmware override. The override gate
 still requires verified backup, recovery, hashes, and exact consent.
 
 Important limitations:
 
 - The app does not provide firmware downloads.
-- The app does not write firmware by itself.
+- The app does not read or write raw firmware partitions.
 - The app does not currently root the G4AR. No public, reproducible G4AR root
   chain, complete restore path, or supported OpenWrt image has been verified.
 - The app does not provide transmit-power override controls.

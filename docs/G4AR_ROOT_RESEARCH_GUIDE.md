@@ -69,18 +69,17 @@ Stop here if ownership is uncertain or the gateway is service-critical.
 ## Step 2: Preserve Stock State
 
 1. Export every backup the stock UI offers.
-2. In TMHI Control Center, open **Settings > G4AR Unlock / Radio Lab**.
-3. Configure a trusted, LAN-only hardware adapter if one exists for your exact
-   unit.
-4. Use **Create Stock Backup** only when that adapter performs real readback.
-5. Preserve the partition table, boot partitions, root filesystems, modem
+2. In TMHI Control Center, open **Settings > G4AR Docker Lab**.
+3. Save and download the Docker recovery bundle for stock API inventory,
+   redacted Wi-Fi configuration, recovery notes, and checksums.
+4. Treat that ZIP as documentation only, not as a raw firmware image.
+5. A separate verified hardware process must preserve the partition table, boot partitions, root filesystems, modem
    firmware, calibration data, identity data, configuration/NVRAM, restore
    notes, and SHA-256 hashes.
 6. Keep at least two offline copies.
 
-The built-in Docker adapter coordinates the workflow but cannot read eMMC or
-internal flash through the stock network API. A manifest without the underlying
-artifacts is not a complete backup.
+Docker cannot read eMMC or internal flash through the stock network API. The
+recovery bundle does not satisfy the raw partition backup requirement.
 
 ## Step 3: Match The Exact Board
 

@@ -2,24 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from .advanced_modem import BUILT_IN_DOCKER_ADAPTER_URL
-
-ADAPTER_EXAMPLES = (
-    BUILT_IN_DOCKER_ADAPTER_URL,
-    "http://router.local:8080",
-    "http://192.168.1.2:8765",
-    "http://rooter.lan:8080",
-)
-
-ADAPTER_REQUIRED_ENDPOINTS = (
-    "GET /health",
-    "POST /g4ar/firmware/backup",
-    "POST /modem/radio/profile",
-    "POST /modem/cell/scan",
-    "POST /modem/lock",
-)
-
-
 def build_homelab_insights(
     *,
     config: dict[str, Any],
@@ -40,7 +22,7 @@ def build_homelab_insights(
         "setup_steps": setup_steps,
         "signal_coach": signal_coach,
         "homelab_cards": homelab_cards,
-        "adapter_guide": _adapter_guide(config),
+        "docker_lab": _docker_lab_guide(config, firmware_backups),
     }
 
 
@@ -179,14 +161,14 @@ def _setup_steps(
         steps.append(
             {
                 "id": "g4ar-backup",
-                "title": "G4AR stock backup skipped for now",
+                "title": "Recovery bundle reminder skipped",
                 "status": "skipped",
                 "tone": "warn",
                 "detail": (
-                    "The setup reminder is suppressed, but firmware override stays "
-                    "locked until backup, recovery, and hashes are verified."
+                    "The setup reminder is suppressed, but firmware override stays locked "
+                    "until a separate raw partition backup and recovery path are verified."
                 ),
-                "action": "Create a stock backup later before any firmware or radio-profile experiment.",
+                "action": "Create the Docker recovery bundle before changing lab settings.",
                 "weight": 13,
             }
         )
@@ -194,12 +176,12 @@ def _setup_steps(
         steps.append(
             _step(
                 "g4ar-backup",
-                "G4AR stock backup saved",
+                "Docker recovery bundle saved",
                 backup_count > 0,
-                "Owned G4AR lab work needs a local stock backup before any adapter-driven firmware research.",
-                "Configure the local adapter URL, acknowledge the risk, then create a stock backup.",
+                "Docker can save stock API inventory, radio data, Wi-Fi settings, and recovery notes.",
+                "Acknowledge the risk, create the bundle, then download its ZIP.",
                 13,
-                warn=bool(advanced.get("control_url_configured")) and backup_count == 0,
+                warn=backup_count == 0,
             )
         )
     else:
@@ -400,37 +382,34 @@ def _homelab_cards(
     ]
 
 
-def _adapter_guide(config: dict[str, Any]) -> dict[str, Any]:
+def _docker_lab_guide(
+    config: dict[str, Any],
+    firmware_backups: dict[str, Any],
+) -> dict[str, Any]:
     advanced = _dict(config.get("advanced_modem"))
-    adapter_ready = bool(advanced.get("enabled") and advanced.get("control_url_configured"))
+    backup_count = len(firmware_backups.get("backups") or [])
+    enabled = bool(advanced.get("enabled"))
     return {
-        "status": "ready" if adapter_ready else "setup_needed",
-        "title": "Local adapter URL",
+        "status": "bundle_saved" if backup_count else "ready" if enabled else "setup_needed",
+        "title": "G4AR Docker lab",
         "summary": (
-            "Docker can use its built-in local adapter URL automatically. Real firmware backup, "
-            "cell scan, tower lock, or radio-profile changes still need a hardware-specific bridge."
+            "TMHI Control Center connects directly to the saved gateway IP. No second service "
+            "or URL is needed for the stock API recovery bundle."
         ),
-        "what_it_does": [
-            "Defaults to the Docker app itself for adapter health checks and simple setup.",
-            "Runs on an OpenWrt/ROOTer router, Raspberry Pi, mini PC, or Linux host on your LAN.",
-            "Talks to an owned modem/gateway through supported local tools such as QMI, MBIM, AT, serial, or vendor tooling.",
-            "Exposes narrow HTTP endpoints that TMHI Control Center can call for backups, scans, and profile intent.",
-            "Keeps risky device-specific commands outside the main app until they can be tested and audited.",
+        "steps": [
+            "Save the gateway IP and admin password in Settings.",
+            "Enable the owner lab and accept the hardware warning.",
+            "Create the recovery bundle and download the ZIP.",
         ],
-        "how_to_get_one": [
-            "Leave the field blank to use the built-in Docker adapter URL.",
-            "For real modem commands, choose the device that will physically reach the modem or gateway lab hardware.",
-            "Install or build a trusted adapter service on that local device.",
-            "Bind it to the LAN only, confirm its health endpoint, then paste its base URL only if it is different from the Docker default.",
-            "Create a stock backup before any firmware or radio-profile experiment.",
+        "bundle_contains": [
+            "Gateway, firmware, hardware, and radio inventory",
+            "Wi-Fi configuration when exposed by the stock API",
+            "Recovery notes, a manifest, and SHA-256 checksums",
         ],
-        "examples": list(ADAPTER_EXAMPLES),
-        "required_endpoints": list(ADAPTER_REQUIRED_ENDPOINTS),
         "safety": [
-            "Do not expose the adapter to the public internet.",
-            "Do not paste random firmware URLs into the adapter.",
-            "Do not continue without a stock backup, SHA-256 hashes, and a tested recovery path.",
-            "Transmit-power override is intentionally unsupported.",
+            "The bundle is not a raw eMMC or flash image.",
+            "It cannot restore boot, calibration, identity, or NVRAM partitions.",
+            "Do not attempt a flash without a separate verified raw backup and tested recovery path.",
         ],
     }
 

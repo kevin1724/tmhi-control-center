@@ -5,7 +5,6 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
-from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,7 +14,6 @@ from pydantic import BaseModel, Field
 
 from . import __version__
 from .advanced_modem import (
-    BUILT_IN_DOCKER_ADAPTER_URL,
     G4AR_LAB_MODES,
     g4ar_firmware_lab_status,
     validate_flash_consent,
@@ -26,6 +24,7 @@ from .credentials import ManagedEnvFile
 from .firmware_backup import (
     FirmwareBackupError,
     create_g4ar_firmware_backup,
+    get_g4ar_backup_archive,
     list_g4ar_firmware_backups,
 )
 from .gateway import GatewayAuthenticationError, GatewayError, UnifiedGatewayClient
@@ -142,13 +141,9 @@ class SettingsUpdateRequest(BaseModel):
 class AdvancedModemSettingsUpdateRequest(BaseModel):
     mode: Literal[
         "disabled",
-        "openwrt_rooter",
-        "modemmanager",
-        "custom_adapter",
         "g4ar_unlock_lab",
         "g4ar_firmware_lab",
     ] = "disabled"
-    control_url: str | None = Field(default=None, max_length=512)
     acknowledged: bool = False
     upload_profile: Literal["balanced", "prefer_upload", "low_latency_upload"] = "balanced"
     radio_profile: Literal[
@@ -542,25 +537,14 @@ async def update_settings(request: SettingsUpdateRequest) -> dict[str, Any]:
 async def update_advanced_modem_settings(
     request: AdvancedModemSettingsUpdateRequest,
 ) -> dict[str, Any]:
-    control_url = (request.control_url or "").strip()
-    if request.mode != "disabled" and not control_url:
-        control_url = BUILT_IN_DOCKER_ADAPTER_URL
     if request.mode != "disabled" and not request.acknowledged:
         raise HTTPException(
             status_code=409,
             detail="Acknowledge the custom firmware and RF compliance warning first",
         )
-    if control_url:
-        parsed_url = urlparse(control_url)
-        if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
-            raise HTTPException(
-                status_code=422,
-                detail="Advanced modem control URL must be an http(s) URL",
-            )
-
     try:
         managed_env.set_value("ADVANCED_MODEM_MODE", request.mode)
-        managed_env.set_value("ADVANCED_MODEM_CONTROL_URL", control_url)
+        managed_env.set_value("ADVANCED_MODEM_CONTROL_URL", "")
         managed_env.set_value(
             "ADVANCED_MODEM_ACKNOWLEDGED",
             str(request.mode != "disabled" and request.acknowledged).lower(),
@@ -578,7 +562,7 @@ async def update_advanced_modem_settings(
         ) from exc
 
     settings.advanced_modem_mode = request.mode
-    settings.advanced_modem_control_url = control_url
+    settings.advanced_modem_control_url = ""
     settings.advanced_modem_acknowledged = request.mode != "disabled" and request.acknowledged
     settings.advanced_upload_profile = request.upload_profile
     settings.advanced_radio_profile = request.radio_profile
@@ -591,7 +575,7 @@ async def update_advanced_modem_settings(
         "Advanced modem lab settings updated",
         {
             "mode": settings.advanced_modem_mode,
-            "control_url_configured": bool(settings.advanced_modem_control_url),
+            "docker_direct": True,
             "acknowledged": settings.advanced_modem_acknowledged,
             "upload_profile": settings.advanced_upload_profile,
             "radio_profile": settings.advanced_radio_profile,
@@ -602,21 +586,21 @@ async def update_advanced_modem_settings(
 
 
 @app.get("/health")
-async def built_in_adapter_health() -> dict[str, Any]:
+async def health() -> dict[str, Any]:
     return {
         "ok": True,
-        "adapter": "tmhi-control-center-docker",
+        "service": "tmhi-control-center",
         "version": __version__,
-        "url": BUILT_IN_DOCKER_ADAPTER_URL,
-        "mode": "built_in_coordinator",
+        "mode": "docker_direct",
         "message": (
-            "The built-in Docker adapter is reachable. Real firmware backup, "
-            "cell scan, tower lock, and radio-profile changes still require "
-            "hardware-specific bridge tooling."
+            "TMHI Control Center is running in Docker-only mode. It can create "
+            "stock-API recovery bundles directly; raw firmware, cell lock, and "
+            "radio overrides are not exposed by stock G4AR firmware."
         ),
         "capabilities": {
             "health": True,
-            "stock_firmware_backup": False,
+            "stock_recovery_bundle": True,
+            "raw_firmware_backup": False,
             "radio_profile": False,
             "cell_scan": False,
             "cell_lock": False,
@@ -629,42 +613,43 @@ async def built_in_adapter_health() -> dict[str, Any]:
     }
 
 
-def _built_in_adapter_not_implemented(action: str) -> HTTPException:
+def _docker_operation_not_implemented(action: str) -> HTTPException:
     return HTTPException(
         status_code=501,
         detail=(
-            f"The built-in Docker adapter received the {action} request, but no "
-            "hardware-specific bridge is installed. Keep this Docker URL as the "
-            "default for health checks, then connect a trusted OpenWrt/ROOTer, "
-            "ModemManager, QMI/MBIM, or vendor-specific adapter before running "
-            "real modem or firmware operations."
+            f"Docker received the {action} request, but stock G4AR firmware does "
+            "not expose that operation through its local API. This capability "
+            "remains unavailable in the Docker-only workflow."
         ),
     )
 
 
 @app.post("/g4ar/firmware/backup")
-async def built_in_adapter_g4ar_backup() -> dict[str, Any]:
-    raise _built_in_adapter_not_implemented("G4AR stock backup")
+async def legacy_g4ar_backup() -> dict[str, Any]:
+    raise HTTPException(
+        status_code=410,
+        detail="Use POST /api/g4ar/firmware/backup for the Docker recovery bundle",
+    )
 
 
 @app.post("/modem/radio/profile")
-async def built_in_adapter_radio_profile() -> dict[str, Any]:
-    raise _built_in_adapter_not_implemented("radio profile")
+async def docker_radio_profile() -> dict[str, Any]:
+    raise _docker_operation_not_implemented("radio profile")
 
 
 @app.post("/modem/cell/scan")
-async def built_in_adapter_cell_scan() -> dict[str, Any]:
-    raise _built_in_adapter_not_implemented("cell scan")
+async def docker_cell_scan() -> dict[str, Any]:
+    raise _docker_operation_not_implemented("cell scan")
 
 
 @app.post("/modem/lock")
-async def built_in_adapter_modem_lock() -> dict[str, Any]:
-    raise _built_in_adapter_not_implemented("tower lock")
+async def docker_modem_lock() -> dict[str, Any]:
+    raise _docker_operation_not_implemented("tower lock")
 
 
 @app.get("/g4ar/usb/probe")
-async def built_in_adapter_g4ar_usb_probe() -> dict[str, Any]:
-    raise _built_in_adapter_not_implemented("G4AR USB-C hardware probe")
+async def docker_g4ar_usb_probe() -> dict[str, Any]:
+    raise _docker_operation_not_implemented("G4AR USB-C hardware probe")
 
 
 @app.get("/api/g4ar/usb/status")
@@ -742,6 +727,22 @@ async def g4ar_firmware_backups() -> dict[str, Any]:
     return list_g4ar_firmware_backups(settings.firmware_backup_dir)
 
 
+@app.get("/api/g4ar/firmware/backups/{backup_id}/download")
+async def g4ar_firmware_backup_download(backup_id: str) -> FileResponse:
+    try:
+        archive_path = get_g4ar_backup_archive(
+            settings.firmware_backup_dir,
+            backup_id,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return FileResponse(
+        archive_path,
+        media_type="application/zip",
+        filename=f"{backup_id}-recovery-bundle.zip",
+    )
+
+
 @app.post("/api/g4ar/firmware/backup")
 async def g4ar_firmware_backup(request: G4ARFirmwareBackupRequest) -> dict[str, Any]:
     if settings.advanced_modem_mode not in G4AR_LAB_MODES:
@@ -754,22 +755,26 @@ async def g4ar_firmware_backup(request: G4ARFirmwareBackupRequest) -> dict[str, 
             status_code=409,
             detail="Acknowledge the custom firmware and RF compliance warning first",
         )
-    if not settings.advanced_modem_control_url:
+    if not settings.gateway_password:
         raise HTTPException(
             status_code=409,
-            detail="Configure a local G4AR unlock adapter URL first",
+            detail="Save the gateway admin password before creating a recovery bundle",
         )
 
     try:
-        manifest = await create_g4ar_firmware_backup(settings, reason=request.reason)
+        manifest = await create_g4ar_firmware_backup(
+            settings,
+            gateway,
+            reason=request.reason,
+        )
     except FirmwareBackupError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except OSError as exc:
         raise HTTPException(status_code=500, detail=f"Backup could not be saved: {exc}") from exc
 
     await store.record(
-        "g4ar_stock_backup_created",
-        "G4AR stock firmware backup saved",
+        "g4ar_recovery_bundle_created",
+        "G4AR Docker recovery bundle saved",
         {
             "backup_id": manifest.get("id"),
             "artifact_count": manifest.get("artifact_count"),
@@ -791,12 +796,6 @@ async def g4ar_firmware_flash_gate(request: G4ARFirmwareFlashRequest) -> dict[st
             status_code=409,
             detail="Acknowledge the custom firmware and RF compliance warning first",
         )
-    if not settings.advanced_modem_control_url:
-        raise HTTPException(
-            status_code=409,
-            detail="Configure a local G4AR unlock adapter URL first",
-        )
-
     request_payload = (
         request.model_dump() if hasattr(request, "model_dump") else request.dict()
     )
@@ -819,7 +818,7 @@ async def g4ar_firmware_flash_gate(request: G4ARFirmwareFlashRequest) -> dict[st
         status_code=501,
         detail=(
             "Flash consent validated, but firmware writing is not implemented until "
-            "a tested local G4AR adapter can verify backup and recovery on this hardware"
+            "a reproducible G4AR write and exact-device recovery method is verified"
         ),
     )
 

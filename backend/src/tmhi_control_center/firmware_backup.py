@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import base64
 import hashlib
 import json
 import re
+import zipfile
 from pathlib import Path
 from typing import Any
-
-import httpx
 
 from .models import utc_now
 
@@ -16,101 +14,115 @@ class FirmwareBackupError(RuntimeError):
     pass
 
 
-SAFE_FILENAME_PATTERN = re.compile(r"[^A-Za-z0-9._-]+")
+BACKUP_ID_PATTERN = re.compile(r"g4ar-\d{8}-\d{6}-\d{6}")
 
 
 async def create_g4ar_firmware_backup(
     settings: Any,
+    gateway: Any,
     *,
     reason: str = "ui_request",
 ) -> dict[str, Any]:
-    adapter_url = settings.advanced_modem_control_url.rstrip("/")
-    request_payload = {
-        "device": "Arcadyan TMO-G4AR",
-        "reason": reason or "ui_request",
-        "radio_profile": settings.advanced_radio_profile,
-        "requested_at": utc_now().isoformat(),
-        "expected_artifacts": [
-            "stock-firmware.bin",
-            "partition-table.txt",
-            "calibration-and-identity-backup.tar",
-            "restore-notes.md",
-            "SHA256SUMS",
-        ],
-    }
-
     try:
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(120.0),
-            follow_redirects=True,
-            trust_env=False,
-        ) as client:
-            response = await client.post(
-                f"{adapter_url}/g4ar/firmware/backup",
-                json=request_payload,
-            )
-    except httpx.HTTPError as exc:
-        raise FirmwareBackupError(f"Local adapter backup request failed: {exc}") from exc
+        overview = await gateway.overview()
+    except Exception as exc:
+        raise FirmwareBackupError(f"Gateway inventory could not be read: {exc}") from exc
 
-    if not response.is_success:
-        detail = response.text.strip()[:240] or response.reason_phrase
-        try:
-            payload = response.json()
-        except ValueError:
-            payload = None
-        if isinstance(payload, dict) and payload.get("detail"):
-            detail = str(payload["detail"])
-        raise FirmwareBackupError(f"Local adapter backup failed: {detail}")
+    detection_value = overview.get("detection") if isinstance(overview, dict) else {}
+    detection = detection_value if isinstance(detection_value, dict) else {}
+    if not isinstance(overview, dict) or detection.get("reachable") is False:
+        raise FirmwareBackupError("Gateway must be reachable before creating a recovery bundle")
 
+    warnings: list[str] = []
     try:
-        adapter_payload = response.json()
-    except ValueError as exc:
-        raise FirmwareBackupError("Local adapter returned non-JSON backup data") from exc
-    if not isinstance(adapter_payload, dict):
-        raise FirmwareBackupError("Local adapter backup response must be a JSON object")
+        wifi = await gateway.wifi_config()
+    except Exception as exc:
+        wifi = {
+            "supported": False,
+            "error": str(exc),
+        }
+        warnings.append(f"Wi-Fi configuration was unavailable: {exc}")
 
-    return save_g4ar_firmware_backup(
+    return save_g4ar_recovery_bundle(
         settings.firmware_backup_dir,
-        adapter_payload,
-        adapter_url=adapter_url,
+        overview=overview,
+        wifi=wifi,
+        reason=reason,
+        warnings=warnings,
     )
 
 
-def save_g4ar_firmware_backup(
+def save_g4ar_recovery_bundle(
     backup_root: str,
-    adapter_payload: dict[str, Any],
     *,
-    adapter_url: str,
+    overview: dict[str, Any],
+    wifi: dict[str, Any],
+    reason: str,
+    warnings: list[str] | None = None,
 ) -> dict[str, Any]:
     created_at = utc_now()
     backup_id = created_at.strftime("g4ar-%Y%m%d-%H%M%S-%f")
-    backup_dir = Path(backup_root).expanduser() / backup_id
+    root = Path(backup_root).expanduser()
+    backup_dir = root / backup_id
     backup_dir.mkdir(parents=True, exist_ok=False)
 
-    artifacts = _normalise_artifacts(adapter_payload)
-    saved_artifacts: list[dict[str, Any]] = []
-    for index, artifact in enumerate(artifacts, start=1):
-        if not isinstance(artifact, dict):
-            continue
-        saved_artifacts.append(_save_artifact(backup_dir, artifact, index))
+    device = overview.get("device") if isinstance(overview.get("device"), dict) else {}
+    firmware_version = device.get("firmware")
+    hardware_revision = device.get("hardware")
+    bundle_payload = {
+        "created_at": created_at.isoformat(),
+        "reason": reason or "ui_request",
+        "device": device,
+        "connection": overview.get("connection") or {},
+        "signal": overview.get("signal") or {},
+        "radios": overview.get("radios") or [],
+        "system": overview.get("system") or {},
+        "telemetry": overview.get("telemetry") or {},
+        "sections": overview.get("sections") or [],
+    }
+
+    artifact_contents = {
+        "gateway-snapshot.json": _json_bytes(bundle_payload),
+        "wifi-configuration.json": _json_bytes(wifi),
+        "restore-notes.md": _restore_notes(
+            created_at=created_at.isoformat(),
+            firmware_version=firmware_version,
+            hardware_revision=hardware_revision,
+            warnings=warnings or [],
+        ).encode("utf-8"),
+    }
+    artifacts = [
+        _write_artifact(backup_dir, name, content)
+        for name, content in artifact_contents.items()
+    ]
+    checksums = "".join(
+        f'{artifact["sha256"]}  {artifact["name"]}\n' for artifact in artifacts
+    ).encode("ascii")
+    artifacts.append(_write_artifact(backup_dir, "SHA256SUMS", checksums))
 
     manifest = {
         "id": backup_id,
         "created_at": created_at.isoformat(),
-        "device": adapter_payload.get("device") or "Arcadyan TMO-G4AR",
-        "firmware_version": adapter_payload.get("firmware_version"),
-        "hardware_revision": adapter_payload.get("hardware_revision"),
-        "adapter_url": adapter_url,
+        "device": "Arcadyan TMO-G4AR",
+        "firmware_version": firmware_version,
+        "hardware_revision": hardware_revision,
+        "backup_type": "docker_stock_recovery_bundle",
+        "source": "docker_direct_gateway_api",
         "status": "saved",
-        "artifact_count": len(saved_artifacts),
-        "artifacts": saved_artifacts,
-        "notes": adapter_payload.get("notes") or [],
-        "metadata": adapter_payload.get("metadata") or {},
+        "raw_firmware_included": False,
+        "flash_backup_requirement_satisfied": False,
+        "artifact_count": len(artifacts),
+        "artifacts": artifacts,
+        "warnings": warnings or [],
+        "notes": [
+            "Created directly by TMHI Control Center using the stock gateway API.",
+            "Includes recoverable settings and inventory exposed by the gateway.",
+            "Does not contain raw eMMC partitions, calibration partitions, or a flashable firmware image.",
+        ],
+        "download_url": f"/api/g4ar/firmware/backups/{backup_id}/download",
     }
-    (backup_dir / "backup-manifest.json").write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    (backup_dir / "backup-manifest.json").write_bytes(_json_bytes(manifest))
+    _create_archive(root, backup_id)
     return manifest
 
 
@@ -126,79 +138,90 @@ def list_g4ar_firmware_backups(backup_root: str) -> dict[str, Any]:
         except (OSError, ValueError):
             continue
         if isinstance(manifest, dict):
-            manifest["path"] = str(manifest_path.parent)
+            backup_id = str(manifest.get("id") or manifest_path.parent.name)
+            manifest.setdefault(
+                "download_url",
+                f"/api/g4ar/firmware/backups/{backup_id}/download",
+            )
+            manifest.setdefault("raw_firmware_included", False)
+            manifest.setdefault("flash_backup_requirement_satisfied", False)
             backups.append(manifest)
 
     backups.sort(key=lambda item: str(item.get("created_at", "")), reverse=True)
     return {"backup_dir": str(root), "count": len(backups), "backups": backups}
 
 
-def _normalise_artifacts(adapter_payload: dict[str, Any]) -> list[dict[str, Any]]:
-    artifacts = adapter_payload.get("artifacts")
-    if isinstance(artifacts, list):
-        return artifacts
-    if "content_base64" in adapter_payload:
-        return [
-            {
-                "name": adapter_payload.get("name") or "stock-firmware.bin",
-                "content_base64": adapter_payload.get("content_base64"),
-                "sha256": adapter_payload.get("sha256"),
-            }
-        ]
-    return []
+def get_g4ar_backup_archive(backup_root: str, backup_id: str) -> Path:
+    if not BACKUP_ID_PATTERN.fullmatch(backup_id):
+        raise FileNotFoundError("Invalid G4AR backup ID")
+    root = Path(backup_root).expanduser()
+    backup_dir = root / backup_id
+    if not backup_dir.is_dir() or not (backup_dir / "backup-manifest.json").is_file():
+        raise FileNotFoundError("G4AR backup was not found")
+    archive_path = root / f"{backup_id}.zip"
+    if not archive_path.is_file():
+        _create_archive(root, backup_id)
+    return archive_path
 
 
-def _save_artifact(
-    backup_dir: Path,
-    artifact: dict[str, Any],
-    index: int,
-) -> dict[str, Any]:
-    name = _safe_artifact_name(str(artifact.get("name") or ""), index)
-    summary: dict[str, Any] = {
+def _write_artifact(backup_dir: Path, name: str, content: bytes) -> dict[str, Any]:
+    path = backup_dir / name
+    path.write_bytes(content)
+    return {
         "name": name,
-        "saved": False,
-        "declared_sha256": _clean_sha256(artifact.get("sha256")),
-        "declared_size_bytes": artifact.get("size_bytes"),
+        "saved": True,
+        "sha256": hashlib.sha256(content).hexdigest(),
+        "size_bytes": len(content),
     }
 
-    encoded_content = artifact.get("content_base64")
-    if not isinstance(encoded_content, str) or not encoded_content.strip():
-        summary["note"] = "Adapter did not include inline content for this artifact."
-        return summary
 
-    try:
-        content = base64.b64decode(encoded_content, validate=True)
-    except ValueError as exc:
-        raise FirmwareBackupError(f"Backup artifact {name} is not valid base64") from exc
+def _create_archive(root: Path, backup_id: str) -> Path:
+    backup_dir = root / backup_id
+    archive_path = root / f"{backup_id}.zip"
+    with zipfile.ZipFile(
+        archive_path,
+        mode="w",
+        compression=zipfile.ZIP_DEFLATED,
+    ) as archive:
+        for path in sorted(backup_dir.iterdir()):
+            if path.is_file():
+                archive.write(path, arcname=path.name)
+    return archive_path
 
-    artifact_path = backup_dir / name
-    artifact_path.write_bytes(content)
-    actual_sha256 = hashlib.sha256(content).hexdigest()
-    declared_sha256 = summary["declared_sha256"]
-    if declared_sha256 and declared_sha256 != actual_sha256:
-        raise FirmwareBackupError(f"Backup artifact {name} SHA-256 does not match")
 
-    summary.update(
-        {
-            "saved": True,
-            "sha256": actual_sha256,
-            "size_bytes": len(content),
-            "path": str(artifact_path),
-        }
+def _json_bytes(value: Any) -> bytes:
+    return (json.dumps(value, indent=2, sort_keys=True, default=str) + "\n").encode(
+        "utf-8"
     )
-    return summary
 
 
-def _safe_artifact_name(raw_name: str, index: int) -> str:
-    basename = raw_name.replace("\\", "/").split("/")[-1].strip()
-    cleaned = SAFE_FILENAME_PATTERN.sub("_", basename).strip("._")
-    if not cleaned:
-        return f"artifact-{index}.bin"
-    return cleaned[:120]
+def _restore_notes(
+    *,
+    created_at: str,
+    firmware_version: Any,
+    hardware_revision: Any,
+    warnings: list[str],
+) -> str:
+    warning_lines = "\n".join(f"- {warning}" for warning in warnings) or "- None"
+    return f"""# G4AR Docker Recovery Bundle
 
+Created: {created_at}
+Firmware: {firmware_version or "Unknown"}
+Hardware: {hardware_revision or "Unknown"}
 
-def _clean_sha256(value: Any) -> str | None:
-    text = str(value or "").strip().lower()
-    if len(text) == 64 and all(character in "0123456789abcdef" for character in text):
-        return text
-    return None
+## What This Bundle Can Restore
+
+- Gateway and radio inventory for comparison after a reset or firmware update.
+- SSID, radio, and Wi-Fi configuration values exposed by the stock API.
+- Signal, serving-cell, and system snapshots for troubleshooting.
+
+## Important Limitation
+
+This is not a raw firmware image. Stock G4AR firmware does not expose eMMC,
+boot, calibration, identity, or NVRAM partitions through its local network API.
+This bundle must not be used to satisfy a custom-firmware flash backup gate.
+
+## Warnings
+
+{warning_lines}
+"""

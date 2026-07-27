@@ -4,7 +4,7 @@ const DEFAULT_VIEW = "dashboard";
 const DEFAULT_MAP_CENTER = { latitude: 39.8283, longitude: -98.5795 };
 const DEFAULT_MAP_RADIUS_KM = 0.8;
 const MAP_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-const BUILT_IN_DOCKER_ADAPTER_URL = "http://127.0.0.1:8000";
+const LIVE_POLL_INTERVAL_MS = 60000;
 
 const state = {
   config: null,
@@ -16,7 +16,6 @@ const state = {
   firmwareBackups: null,
   rootResearch: null,
   rootResearchAssessment: null,
-  usbLab: null,
   mapData: null,
   telemetryHistory: null,
   telemetryHours: 6,
@@ -26,6 +25,8 @@ const state = {
   activeView: DEFAULT_VIEW,
   theme: "light",
   refreshing: false,
+  liveRefreshing: false,
+  lastLiveRefreshAt: 0,
   mapBusy: false,
   actionBusy: false,
   gatewayLoginBusy: false,
@@ -43,15 +44,8 @@ const state = {
 const ids = [
   "actionMessage",
   "advancedCellTag",
-  "adapterEndpointList",
-  "adapterExampleList",
-  "adapterGuideSummary",
-  "adapterGuideTag",
-  "adapterHowToList",
-  "adapterSafetyList",
+  "advancedLabEnabled",
   "advancedModemAcknowledge",
-  "advancedModemControlUrl",
-  "advancedModemMode",
   "advancedModemStatus",
   "advancedRadioProfile",
   "advancedUploadProfile",
@@ -201,12 +195,6 @@ const ids = [
   "towerIdentityDetails",
   "uptimeDetail",
   "uptimeMetric",
-  "usbDeviceList",
-  "usbLabSummary",
-  "usbLabTag",
-  "usbPlatformDetails",
-  "usbProbeButton",
-  "usbProbeChecks",
   "useBrowserLocationButton",
   "watchdogMetric",
   "watchdogPhaseTag",
@@ -222,7 +210,6 @@ const detailLabels = {
   apn: "APN",
   band: "Band",
   broadcast_enabled: "SSID broadcast",
-  built_in_adapter: "Docker adapter",
   controller: "USB controller",
   data_port: "Gateway port",
   cell_id: "Cell ID",
@@ -235,7 +222,6 @@ const detailLabels = {
   custom_firmware_flash: "Custom flash",
   firmware: "Firmware",
   hardware: "Hardware",
-  effective_adapter: "Adapter URL",
   ethernet_target: "Ethernet target",
   lac: "TAC/LAC",
   manufacturer: "Manufacturer",
@@ -258,7 +244,7 @@ const detailLabels = {
   registration: "Registration",
   roaming: "Roaming",
   lte_anchor_override: "LTE anchor / NSA",
-  stock_firmware_backup: "Stock backup",
+  stock_firmware_backup: "Recovery bundle",
   stock_backup_skipped: "Backup reminder",
   stock_support: "Stock firmware",
   ssid: "SSID",
@@ -292,7 +278,12 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   selectTab("probes");
   refreshAll();
-  window.setInterval(() => refreshAll({ quiet: true }), 30000);
+  window.setInterval(refreshLiveData, LIVE_POLL_INTERVAL_MS);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && Date.now() - state.lastLiveRefreshAt >= LIVE_POLL_INTERVAL_MS) {
+      refreshLiveData();
+    }
+  });
 });
 
 function bindControls() {
@@ -310,7 +301,6 @@ function bindControls() {
   els.refreshClientsButton.addEventListener("click", () => refreshClients(false));
   els.lookupClientsButton.addEventListener("click", () => refreshClients(true));
   els.saveAdvancedModemButton.addEventListener("click", saveAdvancedModemSettings);
-  els.usbProbeButton.addEventListener("click", probeG4ARUsbPort);
   els.firmwareBackupButton.addEventListener("click", createG4ARFirmwareBackup);
   els.firmwareFlashButton.addEventListener("click", armG4ARFlashGate);
   els.rootAssessButton.addEventListener("click", assessG4ARRootReadiness);
@@ -327,11 +317,7 @@ function bindControls() {
   els.mapLatitude.addEventListener("input", updateControlState);
   els.mapLongitude.addEventListener("input", updateControlState);
   els.mapRadius.addEventListener("input", updateControlState);
-  els.advancedModemMode.addEventListener("change", () => {
-    ensureAdvancedAdapterDefault();
-    updateControlState();
-  });
-  els.advancedModemControlUrl.addEventListener("input", updateControlState);
+  els.advancedLabEnabled.addEventListener("change", updateControlState);
   els.advancedModemAcknowledge.addEventListener("change", updateControlState);
   els.advancedUploadProfile.addEventListener("change", updateControlState);
   els.advancedRadioProfile.addEventListener("change", updateControlState);
@@ -449,7 +435,6 @@ async function refreshAll({ quiet = false } = {}) {
     api("/api/events?limit=10"),
     api("/api/g4ar/firmware/backups"),
     api(`/api/gateway/telemetry/history?hours=${state.telemetryHours}`),
-    api("/api/g4ar/usb/status"),
     api("/api/speedtest/status"),
     api("/api/speedtest/history?days=365"),
     api("/api/g4ar/root/status"),
@@ -502,28 +487,19 @@ async function refreshAll({ quiet = false } = {}) {
     errors.push(`History: ${results[8].reason.message}`);
   }
   if (results[9].status === "fulfilled") {
-    const previousProbe = state.usbLab?.probe || null;
-    state.usbLab = {
-      ...results[9].value,
-      probe: previousProbe,
-    };
+    state.speedTestStatus = results[9].value;
   } else {
-    errors.push(`USB lab: ${results[9].reason.message}`);
+    errors.push(`Speed schedule: ${results[9].reason.message}`);
   }
   if (results[10].status === "fulfilled") {
-    state.speedTestStatus = results[10].value;
+    state.speedTestHistory = results[10].value;
   } else {
-    errors.push(`Speed schedule: ${results[10].reason.message}`);
+    errors.push(`Speed history: ${results[10].reason.message}`);
   }
   if (results[11].status === "fulfilled") {
-    state.speedTestHistory = results[11].value;
+    state.rootResearch = results[11].value;
   } else {
-    errors.push(`Speed history: ${results[11].reason.message}`);
-  }
-  if (results[12].status === "fulfilled") {
-    state.rootResearch = results[12].value;
-  } else {
-    errors.push(`Root research: ${results[12].reason.message}`);
+    errors.push(`Root research: ${results[11].reason.message}`);
   }
 
   renderAll();
@@ -532,7 +508,42 @@ async function refreshAll({ quiet = false } = {}) {
     showError(errors.join(" | "));
   }
   state.refreshing = false;
+  state.lastLiveRefreshAt = Date.now();
   updateControlState();
+}
+
+async function refreshLiveData() {
+  if (
+    document.hidden ||
+    state.refreshing ||
+    state.liveRefreshing ||
+    state.actionBusy ||
+    state.mapBusy ||
+    state.seriesRunning
+  ) {
+    return;
+  }
+
+  state.liveRefreshing = true;
+  const [statusResult, overviewResult] = await Promise.allSettled([
+    api("/api/status"),
+    api("/api/gateway/overview"),
+  ]);
+  if (statusResult.status === "fulfilled") {
+    state.status = statusResult.value;
+  }
+  if (overviewResult.status === "fulfilled") {
+    state.overview = overviewResult.value;
+  }
+
+  renderHeader();
+  renderOverviewMetrics();
+  renderRadioStack();
+  renderSignal();
+  renderDetails();
+  setText(els.lastRefresh, `Live ${formatTime(new Date())}`);
+  state.lastLiveRefreshAt = Date.now();
+  state.liveRefreshing = false;
 }
 
 async function refreshTelemetryHistory(hours) {
@@ -755,25 +766,6 @@ function renderHomelabInsights() {
   renderChecklist(els.homelabSetupList, insights.setup_steps, { compact: false });
   renderInsightList(els.homelabSignalCoach, insights.signal_coach);
   renderPlaybook(els.homelabPlaybook, insights.homelab_cards);
-
-  const guide = insights.adapter_guide;
-  setTag(
-    els.adapterGuideTag,
-    guide.status === "ready" ? "Adapter configured" : "Setup needed",
-    guide.status === "ready" ? "good" : "warn"
-  );
-  setText(els.adapterGuideSummary, guide.summary);
-  renderOrderedList(els.adapterHowToList, guide.how_to_get_one);
-  renderCodeChips(els.adapterExampleList, guide.examples);
-  renderCodeChips(els.adapterEndpointList, guide.required_endpoints);
-  renderInsightList(
-    els.adapterSafetyList,
-    guide.safety.map((detail) => ({
-      title: "Safety check",
-      detail,
-      tone: "warn",
-    }))
-  );
 }
 
 function buildUiInsights() {
@@ -783,7 +775,6 @@ function buildUiInsights() {
     setup_steps: setupSteps,
     signal_coach: buildSignalCoach(),
     homelab_cards: buildHomelabCards(),
-    adapter_guide: buildAdapterGuide(),
   };
 }
 
@@ -904,24 +895,24 @@ function buildSetupSteps() {
   if (g4arEnabled && backupCount === 0 && skipStockBackup) {
     steps.push({
       id: "g4ar-backup",
-      title: "G4AR stock backup skipped for now",
+      title: "Recovery bundle reminder skipped",
       status: "skipped",
       tone: "warn",
       detail:
-        "The setup reminder is suppressed, but firmware override stays locked until backup, recovery, and hashes are verified.",
-      action: "Create a stock backup later before any firmware or radio-profile experiment.",
+        "The reminder is suppressed, but firmware override still requires a separate raw partition backup and recovery path.",
+      action: "Create the Docker recovery bundle before any radio-profile experiment.",
       weight: 13,
     });
   } else if (g4arEnabled) {
     steps.push(
       setupStep(
         "g4ar-backup",
-        "G4AR stock backup saved",
+        "G4AR Docker recovery bundle saved",
         backupCount > 0,
-        "Owned G4AR lab work needs a local stock backup before any adapter-driven firmware research.",
-        "Configure the local adapter URL, acknowledge the risk, then create a stock backup.",
+        "Docker saves stock API settings, firmware inventory, radio data, recovery notes, and checksums.",
+        "Save the gateway login, enable owner lab, then create and download a recovery bundle.",
         13,
-        { warn: Boolean(advanced.control_url_configured) && backupCount === 0 }
+        { warn: Boolean(state.config?.gateway_password_configured) && backupCount === 0 }
       )
     );
   } else {
@@ -1057,43 +1048,6 @@ function buildHomelabCards() {
   ];
 }
 
-function buildAdapterGuide() {
-  const advanced = state.config?.advanced_modem || {};
-  const adapterReady = Boolean(advanced.enabled && advanced.control_url_configured);
-  const defaultUrl = advanced.default_control_url || BUILT_IN_DOCKER_ADAPTER_URL;
-  return {
-    status: adapterReady ? "ready" : "setup_needed",
-    summary:
-      "Docker can use its built-in local adapter URL automatically. Real firmware backup, cell scan, tower lock, or radio-profile changes still need a hardware-specific bridge.",
-    how_to_get_one: [
-      "Leave the field blank to use the built-in Docker adapter URL.",
-      "For real modem commands, choose the device that will physically reach the modem or gateway lab hardware.",
-      "Install or build a trusted adapter service on that local device.",
-      "Bind it to the LAN only, confirm its health endpoint, then paste its base URL only if it is different from the Docker default.",
-      "Create a stock backup before any firmware or radio-profile experiment.",
-    ],
-    examples: [
-      defaultUrl,
-      "http://router.local:8080",
-      "http://192.168.1.2:8765",
-      "http://rooter.lan:8080",
-    ],
-    required_endpoints: [
-      "GET /health",
-      "POST /g4ar/firmware/backup",
-      "POST /modem/radio/profile",
-      "POST /modem/cell/scan",
-      "POST /modem/lock",
-    ],
-    safety: [
-      "Do not expose the adapter to the public internet.",
-      "Do not paste random firmware URLs into the adapter.",
-      "Do not continue without a stock backup, SHA-256 hashes, and a tested recovery path.",
-      "Transmit-power override is intentionally unsupported.",
-    ],
-  };
-}
-
 function renderChecklist(container, steps, { compact }) {
   replaceChildren(container);
   if (!steps.length) {
@@ -1173,15 +1127,6 @@ function renderOrderedList(container, values) {
     const item = document.createElement("li");
     item.textContent = value;
     container.append(item);
-  }
-}
-
-function renderCodeChips(container, values) {
-  replaceChildren(container);
-  for (const value of values || []) {
-    const chip = document.createElement("code");
-    chip.textContent = value;
-    container.append(chip);
   }
 }
 
@@ -1748,16 +1693,8 @@ function renderControls() {
 
 function renderAdvancedModemControls() {
   const lab = state.config?.advanced_modem || {};
-  if (els.advancedModemMode && document.activeElement !== els.advancedModemMode) {
-    els.advancedModemMode.value = lab.mode || "disabled";
-  }
-  if (els.advancedModemControlUrl && document.activeElement !== els.advancedModemControlUrl) {
-    els.advancedModemControlUrl.placeholder = `Auto: ${lab.default_control_url || BUILT_IN_DOCKER_ADAPTER_URL}`;
-    els.advancedModemControlUrl.value =
-      lab.control_url ||
-      (lab.mode && lab.mode !== "disabled"
-        ? lab.default_control_url || BUILT_IN_DOCKER_ADAPTER_URL
-        : "");
+  if (els.advancedLabEnabled && document.activeElement !== els.advancedLabEnabled) {
+    els.advancedLabEnabled.checked = isG4ARLabMode(lab.mode);
   }
   if (els.advancedModemAcknowledge && document.activeElement !== els.advancedModemAcknowledge) {
     els.advancedModemAcknowledge.checked = Boolean(lab.acknowledged);
@@ -1783,10 +1720,7 @@ function renderAdvancedModemControls() {
     els.advancedModemStatus,
     {
       mode: lab.label || "Disabled",
-      effective_adapter:
-        lab.effective_control_url ||
-        (lab.mode && lab.mode !== "disabled" ? BUILT_IN_DOCKER_ADAPTER_URL : ""),
-      built_in_adapter: lab.built_in_adapter_selected,
+      docker: lab.enabled ? "Connected directly" : "Lab disabled",
       upload_profile: lab.upload_priority?.label || "Balanced",
       radio_profile: g4arRadio.label || "Auto",
       cell_lock: capabilityText(capabilities.cell_lock),
@@ -1794,8 +1728,6 @@ function renderAdvancedModemControls() {
       cell_scan: capabilityText(capabilities.cell_scan),
       lte_anchor_override: capabilityText(capabilities.lte_anchor_override),
       radio_mode_override: capabilityText(capabilities.radio_mode_override),
-      usb_hardware_probe: capabilityText(capabilities.usb_hardware_probe),
-      usb_ethernet_bridge: capabilityText(capabilities.usb_ethernet_bridge),
       upload_priority_qos: capabilityText(capabilities.upload_priority_qos),
       stock_firmware_backup: capabilityText(capabilities.stock_firmware_backup),
       custom_firmware_flash: capabilityText(capabilities.custom_firmware_flash),
@@ -1810,14 +1742,13 @@ function renderAdvancedModemControls() {
       device: firmwareLab.device || "Arcadyan TMO-G4AR",
       lab_status: firmwareLab.flash_status || "Select G4AR unlock / radio lab mode",
       radio_goal: g4arRadio.label || "Auto",
-      adapter_ready: firmwareLab.adapter_ready,
+      docker_ready: firmwareLab.docker_ready,
       stock_backup_skipped: firmwareLab.stock_backup_skipped,
       required_consent: firmwareLab.consent_phrase,
     },
     "G4AR unlock / radio lab status loads after settings refresh."
   );
   renderFirmwareBackupList();
-  renderUsbLab();
   renderRootResearch();
 }
 
@@ -1872,122 +1803,6 @@ function renderRootResearch() {
   );
 }
 
-function renderUsbLab() {
-  if (!els.usbLabTag) {
-    return;
-  }
-
-  const lab = state.usbLab || {};
-  const probe = lab.probe || null;
-  const platform = lab.platform || {};
-  const adapter = lab.recommended_adapter || {};
-  const displayStatus = probe?.status || lab.status || "not_probed";
-  const summary = probe?.summary || lab.reason || "USB-C hardware status loads after refresh.";
-  const tone =
-    displayStatus === "active_2_5gbe" || displayStatus === "link_ready"
-      ? "good"
-      : displayStatus === "interface_ready" || displayStatus === "ready_to_probe"
-        ? "info"
-        : displayStatus === "hardware_bridge_required" || displayStatus === "driver_needed"
-          ? "warn"
-          : "muted";
-
-  setTag(els.usbLabTag, humanize(displayStatus), tone);
-  setText(els.usbLabSummary, summary);
-  renderDetailList(
-    els.usbPlatformDetails,
-    {
-      controller: platform.controller || "MediaTek T750 USB 3",
-      data_port: platform.data_port || "USB Type-C data port",
-      usb_ceiling: platform.controller_speed_mbps
-        ? `${formatNetworkSpeed(platform.controller_speed_mbps)} USB`
-        : "Unknown",
-      ethernet_target: platform.ethernet_target_mbps
-        ? formatNetworkSpeed(platform.ethernet_target_mbps)
-        : "2.5 Gbps",
-      preferred_chipset: adapter.chipset || "ASIX AX88279",
-      preferred_driver: adapter.driver_preference || "CDC-NCM",
-      stock_support: platform.stock_firmware_support || "Unverified",
-    },
-    "G4AR USB platform details unavailable."
-  );
-
-  replaceChildren(els.usbProbeChecks);
-  const checks = probe?.checks || {};
-  const checkOrder = [
-    ["usb_host", "USB host"],
-    ["super_speed_5gbps", "USB 5 Gbps"],
-    ["ethernet_adapter", "Ethernet NIC"],
-    ["driver_bound", "Driver"],
-    ["network_interface", "Interface"],
-    ["carrier", "Carrier"],
-    ["link_2500mbps", "2.5G link"],
-    ["lan_bridge_member", "LAN bridge"],
-  ];
-  if (!probe) {
-    els.usbProbeChecks.append(emptyNode("Run a probe through a gateway-side hardware adapter."));
-  } else {
-    for (const [key, label] of checkOrder) {
-      const item = document.createElement("div");
-      item.className = `usb-check ${checks[key] ? "is-pass" : "is-pending"}`;
-      const indicator = document.createElement("span");
-      indicator.className = "usb-check-indicator";
-      indicator.setAttribute("aria-hidden", "true");
-      const text = document.createElement("span");
-      text.textContent = label;
-      const value = document.createElement("strong");
-      value.textContent = checks[key] ? "Ready" : "Waiting";
-      item.append(indicator, text, value);
-      els.usbProbeChecks.append(item);
-    }
-  }
-
-  replaceChildren(els.usbDeviceList);
-  const devices = Array.isArray(probe?.devices) ? probe.devices : [];
-  if (!devices.length) {
-    els.usbDeviceList.append(emptyNode("No USB Ethernet device reported yet."));
-  } else {
-    for (const device of devices) {
-      const item = document.createElement("article");
-      item.className = "usb-device";
-      const identity = document.createElement("div");
-      const title = document.createElement("strong");
-      title.textContent = device.product || device.manufacturer || "USB device";
-      const ids = document.createElement("small");
-      ids.textContent = compactJoin(
-        [
-          device.vendor_id && device.product_id
-            ? `${device.vendor_id}:${device.product_id}`
-            : "",
-          device.usb_speed_mbps && `USB ${formatNetworkSpeed(device.usb_speed_mbps)}`,
-        ],
-        " - "
-      );
-      identity.append(title, ids);
-
-      const link = document.createElement("strong");
-      link.className = "usb-device-link";
-      link.textContent = device.link_speed_mbps
-        ? formatNetworkSpeed(device.link_speed_mbps)
-        : device.carrier
-          ? "Link up"
-          : "No carrier";
-
-      const metadata = document.createElement("p");
-      metadata.textContent = compactJoin(
-        [
-          device.driver && `Driver ${device.driver}`,
-          device.interface && `Interface ${device.interface}`,
-          device.duplex && humanize(device.duplex),
-        ],
-        " - "
-      ) || "Waiting for driver and interface details.";
-      item.append(identity, link, metadata);
-      els.usbDeviceList.append(item);
-    }
-  }
-}
-
 function renderFirmwareBackupList() {
   if (!els.firmwareBackupList) {
     return;
@@ -1997,16 +1812,22 @@ function renderFirmwareBackupList() {
     ? state.firmwareBackups.backups
     : [];
   replaceChildren(els.firmwareBackupList);
+  const labSaved = isG4ARLabMode(state.config?.advanced_modem?.mode);
+  const readinessMessage = !state.config?.gateway_password_configured
+    ? "Save and test the gateway login in Step 1 to enable bundle creation."
+    : !labSaved
+      ? "Enable the owner lab, accept the warning, and save Step 1 first."
+      : "Ready to read the stock gateway API and create a recovery bundle.";
   const backupStatus = state.firmwareBackups?.backup_dir
-    ? `Backup folder: ${state.firmwareBackups.backup_dir}`
+    ? `Saved in ${state.firmwareBackups.backup_dir}. ${readinessMessage}`
     : "Backup history loads after refresh.";
   const skipMessage = labSkipsStockBackup()
-    ? "Reminder skipped for now. Override gate still requires verified backup and recovery."
+    ? "Reminder hidden. A separate verified raw partition backup is still required before flash research."
     : "";
   setText(els.firmwareBackupStatus, compactJoin([backupStatus, skipMessage], " "));
 
   if (!backups.length) {
-    els.firmwareBackupList.append(emptyNode("No local G4AR stock backups saved yet."));
+    els.firmwareBackupList.append(emptyNode("No Docker recovery bundles saved yet."));
     return;
   }
 
@@ -2019,7 +1840,11 @@ function renderFirmwareBackupList() {
     title.textContent = backup.id || "G4AR backup";
     const subtitle = document.createElement("small");
     subtitle.textContent = compactJoin(
-      [formatDate(backup.created_at), backup.firmware_version && `Firmware ${backup.firmware_version}`],
+      [
+        formatDate(backup.created_at),
+        backup.firmware_version && `Firmware ${backup.firmware_version}`,
+        backup.raw_firmware_included ? "Raw firmware included" : "Stock API bundle",
+      ],
       " - "
     );
     identity.append(title, subtitle);
@@ -2034,9 +1859,20 @@ function renderFirmwareBackupList() {
       : [];
     artifacts.textContent = artifactNames.length
       ? artifactNames.join(", ")
-      : "Manifest saved; adapter did not return inline artifacts.";
+      : "Recovery manifest saved.";
 
-    item.append(identity, count, artifacts);
+    const download = document.createElement("a");
+    download.className = "button button--secondary backup-download";
+    download.href = backup.download_url || `/api/g4ar/firmware/backups/${backup.id}/download`;
+    download.textContent = "Download ZIP";
+
+    const limitation = document.createElement("p");
+    limitation.className = "backup-limitation";
+    limitation.textContent = backup.raw_firmware_included
+      ? "Raw firmware reported by this legacy backup. Verify every hash before use."
+      : "Does not include raw flash, calibration, identity, or NVRAM partitions.";
+
+    item.append(identity, count, download, artifacts, limitation);
     els.firmwareBackupList.append(item);
   }
 }
@@ -2046,7 +1882,7 @@ function capabilityText(capability) {
     return "Unknown";
   }
   if (capability.supported) {
-    return "Adapter ready";
+    return capability.status ? `${humanize(capability.status)} - ${capability.reason || "Ready"}` : "Docker ready";
   }
   return capability.status ? `${humanize(capability.status)} - ${capability.reason || "Unavailable"}` : "Unavailable";
 }
@@ -2055,31 +1891,8 @@ function isG4ARLabMode(mode) {
   return mode === "g4ar_unlock_lab" || mode === "g4ar_firmware_lab";
 }
 
-function isAdvancedMode(mode) {
-  return mode && mode !== "disabled";
-}
-
 function labSkipsStockBackup() {
   return Boolean(state.config?.advanced_modem?.skip_stock_backup);
-}
-
-function effectiveAdvancedControlUrl() {
-  const mode = els.advancedModemMode?.value || "disabled";
-  const value = els.advancedModemControlUrl?.value.trim() || "";
-  if (value) {
-    return value;
-  }
-  return isAdvancedMode(mode) ? BUILT_IN_DOCKER_ADAPTER_URL : "";
-}
-
-function ensureAdvancedAdapterDefault() {
-  if (!els.advancedModemControlUrl) {
-    return;
-  }
-  const mode = els.advancedModemMode?.value || "disabled";
-  if (isAdvancedMode(mode) && !els.advancedModemControlUrl.value.trim()) {
-    els.advancedModemControlUrl.value = BUILT_IN_DOCKER_ADAPTER_URL;
-  }
 }
 
 function renderWifiControls() {
@@ -2165,10 +1978,8 @@ function renderTowerMapSummary() {
     providerReady ? "good" : "warn"
   );
   const advancedModem = state.config?.advanced_modem || {};
-  if (advancedModem.enabled && advancedModem.control_url_configured) {
-    setTag(els.mapTowerLockTag, "Advanced lock adapter", "info");
-  } else if (advancedModem.mode && advancedModem.mode !== "disabled") {
-    setTag(els.mapTowerLockTag, "Adapter setup needed", "warn");
+  if (advancedModem.enabled) {
+    setTag(els.mapTowerLockTag, "Owner lab enabled", "info");
   } else {
     setTag(els.mapTowerLockTag, "Tower lock unsupported", "warn");
   }
@@ -2948,9 +2759,8 @@ async function refreshClients(onlineLookup) {
 }
 
 async function saveAdvancedModemSettings() {
-  const mode = els.advancedModemMode.value;
+  const mode = els.advancedLabEnabled.checked ? "g4ar_unlock_lab" : "disabled";
   const acknowledged = els.advancedModemAcknowledge.checked;
-  const controlUrl = effectiveAdvancedControlUrl();
 
   if (mode !== "disabled" && !acknowledged) {
     setActionMessage("Acknowledge the custom firmware and RF compliance warning first.", "error");
@@ -2963,48 +2773,23 @@ async function saveAdvancedModemSettings() {
       method: "POST",
       body: {
         mode,
-        control_url: controlUrl,
         acknowledged,
         upload_profile: els.advancedUploadProfile.value,
         radio_profile: els.advancedRadioProfile.value,
         skip_stock_backup: els.skipStockBackupReminder.checked,
       },
     });
-    state.usbLab = await api("/api/g4ar/usb/status");
     renderAll();
     return mode === "disabled"
-      ? "G4AR unlock lab disabled."
-      : "Unlock / radio lab settings saved.";
-  });
-}
-
-async function probeG4ARUsbPort() {
-  if (!isG4ARLabMode(els.advancedModemMode.value)) {
-    setActionMessage("Select G4AR unlock / radio lab mode before probing the USB-C port.", "error");
-    els.advancedModemMode.focus();
-    return;
-  }
-  if (!els.advancedModemAcknowledge.checked) {
-    setActionMessage("Acknowledge the owned-hardware research warning first.", "error");
-    els.advancedModemAcknowledge.focus();
-    return;
-  }
-
-  await runAction("Probing the G4AR USB-C data port.", async () => {
-    state.usbLab = await api("/api/g4ar/usb/probe", { method: "POST" });
-    renderUsbLab();
-    const probe = state.usbLab?.probe;
-    if (!probe) {
-      return state.usbLab?.reason || "A gateway-side hardware adapter is required.";
-    }
-    return probe.summary || "USB-C hardware probe completed.";
+      ? "G4AR Docker lab disabled."
+      : "G4AR Docker lab settings saved.";
   });
 }
 
 async function armG4ARFlashGate() {
-  if (!isG4ARLabMode(els.advancedModemMode.value)) {
-    setActionMessage("Select G4AR unlock / radio lab mode before arming the flash gate.", "error");
-    els.advancedModemMode.focus();
+  if (!els.advancedLabEnabled.checked) {
+    setActionMessage("Enable and save the G4AR Docker lab before opening the flash gate.", "error");
+    els.advancedLabEnabled.focus();
     return;
   }
 
@@ -3049,9 +2834,9 @@ async function assessG4ARRootReadiness() {
 }
 
 async function createG4ARFirmwareBackup() {
-  if (!isG4ARLabMode(els.advancedModemMode.value)) {
-    setActionMessage("Select G4AR unlock / radio lab mode before creating a stock backup.", "error");
-    els.advancedModemMode.focus();
+  if (!els.advancedLabEnabled.checked) {
+    setActionMessage("Enable and save the G4AR Docker lab before creating a recovery bundle.", "error");
+    els.advancedLabEnabled.focus();
     return;
   }
   if (!els.advancedModemAcknowledge.checked) {
@@ -3059,27 +2844,20 @@ async function createG4ARFirmwareBackup() {
     els.advancedModemAcknowledge.focus();
     return;
   }
-  if (!els.advancedModemControlUrl.value.trim()) {
-    ensureAdvancedAdapterDefault();
+  if (!state.config?.gateway_password_configured) {
+    setActionMessage("Save the gateway admin password before creating a recovery bundle.", "error");
+    els.gatewayPassword.focus();
+    return;
   }
 
-  await runAction("Creating G4AR stock firmware backup.", async () => {
+  await runAction("Creating the G4AR Docker recovery bundle.", async () => {
     const manifest = await api("/api/g4ar/firmware/backup", {
       method: "POST",
       body: { reason: "ui_request" },
     });
     state.firmwareBackups = await api("/api/g4ar/firmware/backups");
-
-    const stockArtifact = Array.isArray(manifest.artifacts)
-      ? manifest.artifacts.find((artifact) => artifact.saved && artifact.sha256)
-      : null;
-    if (stockArtifact?.sha256 && document.activeElement !== els.firmwareBackupSha256) {
-      els.firmwareBackupSha256.value = stockArtifact.sha256;
-      els.firmwareBackupVerified.checked = true;
-    }
-
     renderAdvancedModemControls();
-    return `Stock backup saved: ${manifest.id}`;
+    return `Recovery bundle saved: ${manifest.id}. Download the ZIP below.`;
   });
 }
 
@@ -3300,13 +3078,13 @@ function updateControlState() {
   const hasPassword = Boolean(els.gatewayPassword.value);
   const configured = Boolean(state.config?.gateway_password_configured);
   const openCellIdConfigured = Boolean(state.config?.map?.opencellid_configured);
-  const advancedMode = els.advancedModemMode?.value || "disabled";
-  const advancedEnabled = advancedMode !== "disabled";
-  const g4arLabEnabled = isG4ARLabMode(advancedMode);
+  const advancedEnabled = Boolean(els.advancedLabEnabled?.checked);
+  const g4arLabEnabled = advancedEnabled;
+  const g4arLabSaved = isG4ARLabMode(state.config?.advanced_modem?.mode);
   const g4arBackupReady =
-    g4arLabEnabled &&
+    g4arLabSaved &&
     els.advancedModemAcknowledge.checked &&
-    Boolean(els.advancedModemControlUrl.value.trim());
+    configured;
   const firmwareConsentPhrase =
     state.config?.advanced_modem?.g4ar_unlock_lab?.consent_phrase ||
     state.config?.advanced_modem?.g4ar_firmware_lab?.consent_phrase ||
@@ -3342,14 +3120,11 @@ function updateControlState() {
   els.wifiRadioToggle.disabled = busy || !configured;
   els.dryRunToggle.disabled = busy;
   els.testFrequency.disabled = busy;
-  els.advancedModemMode.disabled = busy;
-  els.advancedModemControlUrl.disabled = busy || !advancedEnabled;
+  els.advancedLabEnabled.disabled = busy;
   els.advancedModemAcknowledge.disabled = busy || !advancedEnabled;
   els.advancedUploadProfile.disabled = busy || !advancedEnabled;
   els.advancedRadioProfile.disabled = busy || !g4arLabEnabled;
   els.skipStockBackupReminder.disabled = busy || !g4arLabEnabled;
-  els.usbProbeButton.disabled =
-    busy || !g4arLabEnabled || !els.advancedModemAcknowledge.checked;
   els.firmwareBackupButton.disabled = busy || !g4arBackupReady;
   els.firmwareBackupSha256.disabled = busy || !g4arLabEnabled;
   els.firmwareSha256.disabled = busy || !g4arLabEnabled;

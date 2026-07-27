@@ -16,15 +16,15 @@ All notable changes to this new project will be documented here.
 - Added responsive RSRP, SINR, and conditional temperature trend charts with
   1-hour, 6-hour, 24-hour, and 7-day views.
 - Added a Homelab readiness engine and `/api/homelab/snapshot` endpoint for
-  setup scoring, next-best-action guidance, signal coaching, local adapter
+  setup scoring, next-best-action guidance, signal coaching, Docker lab
   instructions, playbook cards, and redacted troubleshooting export.
 - Added a dedicated web Homelab page with setup checklist, signal/antenna coach,
-  router offload/SQM playbook, G4AR local adapter guide, and snapshot download.
+  router offload/SQM playbook, G4AR Docker workflow, and snapshot download.
 - Added a native Android Homelab tab with matching setup, signal, playbook,
   adapter, and stock-backup guidance.
-- Added a built-in Docker adapter default at `http://127.0.0.1:8000` so the web
-  G4AR lab can auto-fill the local adapter URL when advanced mode is enabled.
-- Added a saved option to skip the G4AR stock-backup setup reminder while
+- Added a direct Docker recovery bundle with stock API inventory, Wi-Fi
+  configuration, recovery notes, SHA-256 checksums, and ZIP download.
+- Added a saved option to skip the G4AR recovery-bundle setup reminder while
   keeping firmware override locked behind backup, recovery, hash, and consent
   checks.
 - Added a read-only G4AR USB-C 2.5GbE lab with normalized host, SuperSpeed,
@@ -37,8 +37,10 @@ All notable changes to this new project will be documented here.
 - Reworked the web dashboard into a denser health view with radio mode,
   temperature availability, uptime, connected-device count, live radio cards,
   and compact mobile navigation.
-- Updated the dashboard and settings copy to make the local adapter URL easier
-  to understand for owner-controlled G4AR firmware/radio lab workflows.
+- Removed the web local-service URL setup and simplified the G4AR lab into three
+  Docker-only steps.
+- Replaced the 30-second full-page refresh with a visibility-aware, one-minute
+  status and gateway telemetry poll.
 - Renamed the Python package path to `backend/src/tmhi_control_center/`.
 - Moved the Python app, tests, and package metadata under `backend/`.
 - Removed the duplicate root-level Python files and legacy `app/` copy.

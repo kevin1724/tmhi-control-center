@@ -1,7 +1,7 @@
-import base64
-import hashlib
 import importlib
+import io
 import sys
+import zipfile
 from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
@@ -26,9 +26,13 @@ def test_dashboard_is_served(monkeypatch, tmp_path) -> None:
 
     with TestClient(main.app) as client:
         response = client.get("/")
+        script = client.get("/static/app.js")
 
     assert response.status_code == 200
     assert "Control Center" in response.text
+    assert script.status_code == 200
+    assert "window.setInterval(refreshLiveData, LIVE_POLL_INTERVAL_MS)" in script.text
+    assert "setInterval(() => refreshAll" not in script.text
 
 
 def test_check_series_endpoint(monkeypatch, tmp_path) -> None:
@@ -125,7 +129,7 @@ def test_gateway_clients_endpoint(monkeypatch, tmp_path) -> None:
     assert response.json()["online_vendor_lookup"] is True
 
 
-def test_homelab_snapshot_includes_readiness_and_adapter_guide(
+def test_homelab_snapshot_includes_readiness_and_docker_lab_guide(
     monkeypatch,
     tmp_path,
 ) -> None:
@@ -191,7 +195,10 @@ def test_homelab_snapshot_includes_readiness_and_adapter_guide(
     assert response.status_code == 200
     payload = response.json()
     assert payload["insights"]["readiness"]["score"] > 50
-    assert payload["insights"]["adapter_guide"]["examples"][0].startswith("http://")
+    docker_lab = payload["insights"]["docker_lab"]
+    assert docker_lab["title"] == "G4AR Docker lab"
+    assert len(docker_lab["steps"]) == 3
+    assert "not a raw eMMC" in docker_lab["safety"][0]
     assert payload["config"]["gateway_password_configured"] is False
     assert payload["clients"]["count"] == 1
 
@@ -289,16 +296,14 @@ def test_advanced_modem_lab_requires_acknowledgement_and_saves_settings(
         blocked = client.post(
             "/api/advanced-modem/settings",
             json={
-                "mode": "openwrt_rooter",
-                "control_url": "http://router.local:8080",
+                "mode": "g4ar_unlock_lab",
                 "acknowledged": False,
             },
         )
         saved = client.post(
             "/api/advanced-modem/settings",
             json={
-                "mode": "openwrt_rooter",
-                "control_url": "http://router.local:8080",
+                "mode": "g4ar_unlock_lab",
                 "acknowledged": True,
             },
         )
@@ -307,7 +312,6 @@ def test_advanced_modem_lab_requires_acknowledgement_and_saves_settings(
             "/api/advanced-modem/settings",
             json={
                 "mode": "disabled",
-                "control_url": "",
                 "acknowledged": False,
             },
         )
@@ -315,18 +319,19 @@ def test_advanced_modem_lab_requires_acknowledgement_and_saves_settings(
     assert blocked.status_code == 409
     assert saved.status_code == 200
     payload = saved.json()["advanced_modem"]
-    assert payload["mode"] == "openwrt_rooter"
+    assert payload["mode"] == "g4ar_unlock_lab"
     assert payload["enabled"] is True
-    assert payload["control_url_configured"] is True
-    assert payload["capabilities"]["cell_lock"]["supported"] is True
+    assert payload["docker_direct"] is True
+    assert payload["capabilities"]["cell_lock"]["supported"] is False
+    assert payload["capabilities"]["cell_lock"]["status"] == "not_exposed_by_stock_api"
     assert payload["capabilities"]["tx_power_override"]["supported"] is False
-    assert "ADVANCED_MODEM_MODE=openwrt_rooter\n" in saved_settings
-    assert "ADVANCED_MODEM_CONTROL_URL=http://router.local:8080\n" in saved_settings
+    assert "ADVANCED_MODEM_MODE=g4ar_unlock_lab\n" in saved_settings
+    assert "ADVANCED_MODEM_CONTROL_URL=\n" in saved_settings
     assert "ADVANCED_MODEM_ACKNOWLEDGED=true\n" in saved_settings
     assert disabled.json()["advanced_modem"]["enabled"] is False
 
 
-def test_advanced_modem_lab_uses_docker_adapter_default(
+def test_advanced_modem_lab_uses_docker_direct_workflow(
     monkeypatch,
     tmp_path,
 ) -> None:
@@ -339,100 +344,28 @@ def test_advanced_modem_lab_uses_docker_adapter_default(
             "/api/advanced-modem/settings",
             json={
                 "mode": "g4ar_unlock_lab",
-                "control_url": "",
                 "acknowledged": True,
                 "skip_stock_backup": True,
             },
         )
 
     assert health.status_code == 200
-    assert health.json()["adapter"] == "tmhi-control-center-docker"
-    assert health.json()["url"] == "http://127.0.0.1:8000"
+    assert health.json()["service"] == "tmhi-control-center"
+    assert health.json()["mode"] == "docker_direct"
+    assert health.json()["capabilities"]["stock_recovery_bundle"] is True
+    assert health.json()["capabilities"]["raw_firmware_backup"] is False
     assert saved.status_code == 200
     lab = saved.json()["advanced_modem"]
-    assert lab["control_url"] == "http://127.0.0.1:8000"
-    assert lab["effective_control_url"] == "http://127.0.0.1:8000"
-    assert lab["built_in_adapter_selected"] is True
+    assert lab["docker_direct"] is True
     assert lab["skip_stock_backup"] is True
     assert lab["capabilities"]["stock_firmware_backup"]["status"] == (
-        "hardware_bridge_required"
+        "docker_recovery_bundle_ready"
     )
-    assert lab["g4ar_unlock_lab"]["adapter_ready"] is False
+    assert lab["g4ar_unlock_lab"]["docker_ready"] is True
     assert lab["g4ar_unlock_lab"]["stock_backup_skipped"] is True
     saved_settings = env_path.read_text(encoding="utf-8")
-    assert "ADVANCED_MODEM_CONTROL_URL=http://127.0.0.1:8000\n" in saved_settings
+    assert "ADVANCED_MODEM_CONTROL_URL=\n" in saved_settings
     assert "ADVANCED_SKIP_STOCK_BACKUP=true\n" in saved_settings
-
-
-def test_g4ar_usb_probe_uses_configured_hardware_adapter(
-    monkeypatch,
-    tmp_path,
-) -> None:
-    main = load_main(monkeypatch, tmp_path)
-    calls: list[str] = []
-
-    class FakeAdapterClient:
-        def __init__(self, *args, **kwargs) -> None:
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb) -> None:
-            return None
-
-        async def get(self, url):
-            calls.append(url)
-
-            class Response:
-                is_success = True
-                status_code = 200
-                reason_phrase = "OK"
-
-                def json(self):
-                    return {
-                        "port": {"role": "host", "speed_mbps": 5000, "vbus": True},
-                        "devices": [
-                            {
-                                "vendor_id": "0b95",
-                                "product_id": "2790",
-                                "product": "AX88279 USB 2.5G Ethernet",
-                                "usb_speed_mbps": 5000,
-                                "driver": "cdc_ncm",
-                                "interface": "usb0",
-                                "carrier": True,
-                                "link_speed_mbps": 2500,
-                            }
-                        ],
-                    }
-
-            return Response()
-
-    monkeypatch.setattr(
-        "tmhi_control_center.usb_lab.httpx.AsyncClient",
-        FakeAdapterClient,
-    )
-
-    with TestClient(main.app) as client:
-        initial = client.get("/api/g4ar/usb/status")
-        saved = client.post(
-            "/api/advanced-modem/settings",
-            json={
-                "mode": "g4ar_unlock_lab",
-                "control_url": "http://192.168.12.2:8765",
-                "acknowledged": True,
-            },
-        )
-        probed = client.post("/api/g4ar/usb/probe")
-
-    assert initial.status_code == 200
-    assert initial.json()["status"] == "lab_mode_required"
-    assert saved.status_code == 200
-    assert probed.status_code == 200
-    assert calls == ["http://192.168.12.2:8765/g4ar/usb/probe"]
-    assert probed.json()["probe"]["status"] == "link_ready"
-    assert probed.json()["probe"]["ready_for_isolated_test"] is True
-    assert probed.json()["probe"]["ready_for_lan_bridge"] is True
 
 
 def test_g4ar_usb_probe_reports_docker_hardware_boundary(
@@ -506,7 +439,7 @@ def test_g4ar_firmware_lab_flash_gate_requires_full_consent(
     assert lab["upload_priority"]["profile"] == "prefer_upload"
     assert lab["g4ar_radio"]["profile"] == "prefer_lte_anchor_nsa"
     assert lab["capabilities"]["custom_firmware_flash"]["status"] == (
-        "consent_and_recovery_required"
+        "unavailable_no_verified_writer"
     )
     assert status.status_code == 200
     assert status.json()["consent_phrase"] == (
@@ -579,87 +512,91 @@ def test_g4ar_firmware_backup_requires_unlock_lab(
     assert "Select G4AR unlock" in blocked.json()["detail"]
 
 
-def test_g4ar_firmware_backup_saves_adapter_artifacts(
+def test_g4ar_firmware_backup_saves_downloadable_docker_bundle(
     monkeypatch,
     tmp_path,
 ) -> None:
     main = load_main(monkeypatch, tmp_path)
     main.settings.firmware_backup_dir = str(tmp_path / "firmware-backups")
-    backup_bytes = b"stock firmware image"
-    backup_hash = hashlib.sha256(backup_bytes).hexdigest()
-    calls: list[dict[str, object]] = []
 
-    class FakeAdapterClient:
-        def __init__(self, *args, **kwargs) -> None:
+    class FakeGateway:
+        async def overview(self):
+            return {
+                "detection": {"reachable": True, "api_type": "unified"},
+                "device": {
+                    "model": "TMO-G4AR",
+                    "firmware": "1.00.12",
+                    "hardware": "lab-unit",
+                },
+                "connection": {"network_type": "5G", "band": "n41"},
+                "signal": {"score": 80, "quality": "Good"},
+                "radios": [{"technology": "NR", "band": "n41"}],
+                "system": {"uptime": "2d 3h"},
+                "telemetry": {"advanced_cell_available": True},
+                "sections": [],
+            }
+
+        async def wifi_config(self):
+            return {
+                "supported": True,
+                "ssid": "HomeLab",
+                "radio_enabled": True,
+                "sections": [],
+            }
+
+        async def close(self) -> None:
             pass
 
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb) -> None:
-            return None
-
-        async def post(self, url, json):
-            calls.append({"url": url, "json": json})
-
-            class Response:
-                is_success = True
-                reason_phrase = "OK"
-                text = ""
-
-                def json(self):
-                    return {
-                        "device": "Arcadyan TMO-G4AR",
-                        "firmware_version": "1.00.12",
-                        "hardware_revision": "lab-unit",
-                        "artifacts": [
-                            {
-                                "name": "../stock-firmware.bin",
-                                "content_base64": base64.b64encode(backup_bytes).decode(
-                                    "ascii"
-                                ),
-                                "sha256": backup_hash,
-                            }
-                        ],
-                    }
-
-            return Response()
-
-    monkeypatch.setattr(
-        "tmhi_control_center.firmware_backup.httpx.AsyncClient",
-        FakeAdapterClient,
-    )
-
     with TestClient(main.app) as client:
+        original_gateway = main.gateway
+        main.gateway = FakeGateway()
+        main.settings.gateway_password = "saved-password"
         saved_settings = client.post(
             "/api/advanced-modem/settings",
             json={
                 "mode": "g4ar_unlock_lab",
-                "control_url": "http://127.0.0.1:8765",
                 "acknowledged": True,
             },
         )
-        created = client.post(
-            "/api/g4ar/firmware/backup",
-            json={"reason": "test"},
-        )
-        listed = client.get("/api/g4ar/firmware/backups")
+        try:
+            created = client.post(
+                "/api/g4ar/firmware/backup",
+                json={"reason": "test"},
+            )
+            manifest = created.json()
+            listed = client.get("/api/g4ar/firmware/backups")
+            downloaded = client.get(manifest["download_url"])
+        finally:
+            main.gateway = original_gateway
 
     assert saved_settings.status_code == 200
     assert created.status_code == 200
-    manifest = created.json()
     assert manifest["firmware_version"] == "1.00.12"
-    assert manifest["artifact_count"] == 1
-    assert manifest["artifacts"][0]["name"] == "stock-firmware.bin"
-    assert manifest["artifacts"][0]["sha256"] == backup_hash
-    assert calls[0]["url"] == "http://127.0.0.1:8765/g4ar/firmware/backup"
-    assert calls[0]["json"]["reason"] == "test"
-
-    artifact_path = tmp_path / "firmware-backups" / manifest["id"] / "stock-firmware.bin"
-    assert artifact_path.read_bytes() == backup_bytes
+    assert manifest["backup_type"] == "docker_stock_recovery_bundle"
+    assert manifest["raw_firmware_included"] is False
+    assert manifest["flash_backup_requirement_satisfied"] is False
+    assert manifest["artifact_count"] == 4
+    assert {artifact["name"] for artifact in manifest["artifacts"]} == {
+        "gateway-snapshot.json",
+        "wifi-configuration.json",
+        "restore-notes.md",
+        "SHA256SUMS",
+    }
     assert listed.status_code == 200
     assert listed.json()["count"] == 1
     assert listed.json()["backups"][0]["id"] == manifest["id"]
+    assert downloaded.status_code == 200
+    assert downloaded.headers["content-type"] == "application/zip"
+    with zipfile.ZipFile(io.BytesIO(downloaded.content)) as archive:
+        assert set(archive.namelist()) == {
+            "backup-manifest.json",
+            "gateway-snapshot.json",
+            "wifi-configuration.json",
+            "restore-notes.md",
+            "SHA256SUMS",
+        }
+        notes = archive.read("restore-notes.md").decode("utf-8")
+        assert "not a raw firmware image" in notes
 
 
 def test_gateway_map_limits_opencellid_bbox_radius(monkeypatch, tmp_path) -> None:
