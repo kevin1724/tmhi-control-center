@@ -20,8 +20,8 @@ All notable changes to this new project will be documented here.
   instructions, playbook cards, and redacted troubleshooting export.
 - Added a dedicated web Homelab page with setup checklist, signal/antenna coach,
   router offload/SQM playbook, G4AR Docker workflow, and snapshot download.
-- Added a native Android Homelab tab with matching setup, signal, playbook,
-  adapter, and stock-backup guidance.
+- Added a native Android Lab tab with setup, signal, playbook, and encrypted
+  Wi-Fi recovery guidance.
 - Added a direct Docker recovery bundle with stock API inventory, Wi-Fi
   configuration, recovery notes, SHA-256 checksums, and ZIP download.
 - Added a saved option to skip the G4AR recovery-bundle setup reminder while
@@ -31,6 +31,8 @@ All notable changes to this new project will be documented here.
   Ethernet-device, driver, interface, carrier, link-speed, and bridge checks.
 - Added a gateway-side `GET /g4ar/usb/probe` adapter contract, privacy filtering,
   backend tests, and a staged USB-C hardware and recovery guide.
+- Added a phone-local Android Wi-Fi recovery vault for gateway-exposed SSIDs and
+  unmasked credentials, protected with Android Keystore encryption.
 
 ### Changed
 
@@ -39,6 +41,9 @@ All notable changes to this new project will be documented here.
   and compact mobile navigation.
 - Removed the web local-service URL setup and simplified the G4AR lab into three
   Docker-only steps.
+- Reworked Android around a five-destination icon navigation bar, moved manual
+  diagnostics into Profile, encrypted saved secrets, and removed the obsolete
+  Android local-adapter workflow.
 - Replaced the 30-second full-page refresh with a visibility-aware, one-minute
   status and gateway telemetry poll.
 - Renamed the Python package path to `backend/src/tmhi_control_center/`.

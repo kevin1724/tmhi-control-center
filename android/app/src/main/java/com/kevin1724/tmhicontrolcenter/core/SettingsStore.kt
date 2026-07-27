@@ -4,22 +4,23 @@ import android.content.Context
 
 class SettingsStore(context: Context) {
     private val prefs = context.getSharedPreferences("tmhi_control_center", Context.MODE_PRIVATE)
+    private val secretBox = SecretBox("tmhi-control-center-settings-v1")
 
     fun load(): AppSettings {
+        val gatewayPassword = loadSecret(KEY_GATEWAY_PASSWORD)
+        val openCellIdKey = loadSecret(KEY_OPENCELLID_KEY)
         return AppSettings(
             gatewayHost = prefs.getString(KEY_GATEWAY_HOST, "192.168.12.1").orEmpty(),
             gatewayPort = prefs.getInt(KEY_GATEWAY_PORT, 8080),
             gatewayUsername = prefs.getString(KEY_GATEWAY_USERNAME, "admin").orEmpty(),
-            gatewayPassword = prefs.getString(KEY_GATEWAY_PASSWORD, "").orEmpty(),
-            openCellIdKey = prefs.getString(KEY_OPENCELLID_KEY, "").orEmpty(),
+            gatewayPassword = gatewayPassword,
+            openCellIdKey = openCellIdKey,
             mapLatitude = nullableDouble(KEY_MAP_LATITUDE),
             mapLongitude = nullableDouble(KEY_MAP_LONGITUDE),
             mapRadiusKm = double(KEY_MAP_RADIUS_KM, 0.8),
             advancedMode = enumValue(KEY_ADVANCED_MODE, AdvancedMode.Disabled),
-            adapterUrl = prefs.getString(KEY_ADAPTER_URL, "").orEmpty(),
             radioProfile = enumValue(KEY_RADIO_PROFILE, RadioProfile.Auto),
             advancedAcknowledged = prefs.getBoolean(KEY_ADVANCED_ACKNOWLEDGED, false),
-            skipStockBackup = prefs.getBoolean(KEY_SKIP_STOCK_BACKUP, false),
         )
     }
 
@@ -28,17 +29,26 @@ class SettingsStore(context: Context) {
             .putString(KEY_GATEWAY_HOST, settings.gatewayHost.trim())
             .putInt(KEY_GATEWAY_PORT, settings.gatewayPort)
             .putString(KEY_GATEWAY_USERNAME, settings.gatewayUsername.trim())
-            .putString(KEY_GATEWAY_PASSWORD, settings.gatewayPassword)
-            .putString(KEY_OPENCELLID_KEY, settings.openCellIdKey.trim())
+            .putString(KEY_GATEWAY_PASSWORD, secretBox.encrypt(settings.gatewayPassword))
+            .putString(KEY_OPENCELLID_KEY, secretBox.encrypt(settings.openCellIdKey.trim()))
             .putDoubleOrRemove(KEY_MAP_LATITUDE, settings.mapLatitude)
             .putDoubleOrRemove(KEY_MAP_LONGITUDE, settings.mapLongitude)
             .putString(KEY_MAP_RADIUS_KM, settings.mapRadiusKm.toString())
             .putString(KEY_ADVANCED_MODE, settings.advancedMode.name)
-            .putString(KEY_ADAPTER_URL, settings.adapterUrl.trim())
+            .remove(KEY_ADAPTER_URL)
             .putString(KEY_RADIO_PROFILE, settings.radioProfile.name)
             .putBoolean(KEY_ADVANCED_ACKNOWLEDGED, settings.advancedAcknowledged)
-            .putBoolean(KEY_SKIP_STOCK_BACKUP, settings.skipStockBackup)
+            .remove(KEY_SKIP_STOCK_BACKUP)
             .apply()
+    }
+
+    private fun loadSecret(key: String): String {
+        val stored = prefs.getString(key, "").orEmpty()
+        if (stored.isBlank()) return ""
+        if (secretBox.isEncrypted(stored)) return secretBox.decrypt(stored).orEmpty()
+
+        prefs.edit().putString(key, secretBox.encrypt(stored)).apply()
+        return stored
     }
 
     private fun nullableDouble(key: String): Double? {

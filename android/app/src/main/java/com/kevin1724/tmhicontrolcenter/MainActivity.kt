@@ -27,12 +27,16 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -41,6 +45,13 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -53,6 +64,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -80,19 +92,18 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen(val label: String) {
-    Dashboard("Dashboard"),
-    Devices("Devices"),
-    Map("Map"),
-    Homelab("Homelab"),
-    Diagnostics("Diagnostics"),
-    Settings("Settings"),
+private enum class Screen(val label: String, val icon: ImageVector) {
+    Home("Home", Icons.Default.Home),
+    Devices("Devices", Icons.Default.Devices),
+    Map("Map", Icons.Default.Map),
+    Lab("Lab", Icons.Default.Science),
+    Settings("Profile", Icons.Default.Person),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TmhiApp(state: AppUiState, viewModel: TmhiViewModel) {
-    var screen by rememberSaveable { mutableStateOf(Screen.Dashboard) }
+    var screen by rememberSaveable { mutableStateOf(Screen.Home) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(state.message, state.error) {
@@ -107,7 +118,7 @@ private fun TmhiApp(state: AppUiState, viewModel: TmhiViewModel) {
                     Column {
                         Text("TMHI Control Center", fontWeight = FontWeight.Black)
                         Text(
-                            state.overview?.device?.get("Model") ?: state.settings.gatewayHost,
+                            "${screen.label} / ${state.overview?.device?.get("Model") ?: state.settings.gatewayHost}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -122,19 +133,29 @@ private fun TmhiApp(state: AppUiState, viewModel: TmhiViewModel) {
                                 .height(24.dp),
                             strokeWidth = 2.dp,
                         )
+                    } else {
+                        IconButton(
+                            onClick = { viewModel.refreshAll(includeNearbyTowers = false) },
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh gateway")
+                        }
                     }
                 },
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.surface,
+                tonalElevation = 2.dp,
+            ) {
                 Screen.entries.forEach { item ->
                     NavigationBarItem(
                         selected = item == screen,
                         onClick = { screen = item },
-                        icon = { Text(item.label.take(1), fontWeight = FontWeight.Black) },
+                        icon = { Icon(item.icon, contentDescription = item.label) },
                         label = { Text(item.label) },
+                        alwaysShowLabel = false,
                     )
                 }
             }
@@ -146,7 +167,7 @@ private fun TmhiApp(state: AppUiState, viewModel: TmhiViewModel) {
                 .padding(padding),
         ) {
             when (screen) {
-                Screen.Dashboard -> DashboardScreen(state) { viewModel.refreshAll(includeNearbyTowers = false) }
+                Screen.Home -> DashboardScreen(state) { viewModel.refreshAll(includeNearbyTowers = false) }
                 Screen.Devices -> DevicesScreen(
                     state = state,
                     onApplyWifi = viewModel::applyWifi,
@@ -157,21 +178,19 @@ private fun TmhiApp(state: AppUiState, viewModel: TmhiViewModel) {
                     onSaveSettings = viewModel::updateSettings,
                     onRefresh = viewModel::refreshTowers,
                 )
-                Screen.Homelab -> HomelabScreen(
+                Screen.Lab -> HomelabScreen(
                     state = state,
                     onRefresh = { viewModel.refreshAll(includeNearbyTowers = false) },
-                    onCreateBackup = viewModel::createFirmwareBackup,
-                )
-                Screen.Diagnostics -> DiagnosticsScreen(
-                    state = state,
-                    onRefresh = { viewModel.refreshAll(includeNearbyTowers = false) },
-                    onReboot = viewModel::requestReboot,
+                    onCreateBackup = viewModel::createWifiBackup,
+                    onRestoreBackup = viewModel::restoreWifiBackup,
+                    onDeleteBackup = viewModel::deleteWifiBackup,
                 )
                 Screen.Settings -> SettingsScreen(
                     state = state,
                     onSave = viewModel::updateSettings,
                     onTestLogin = viewModel::testGatewayLogin,
-                    onCreateBackup = viewModel::createFirmwareBackup,
+                    onRefresh = { viewModel.refreshAll(includeNearbyTowers = false) },
+                    onReboot = viewModel::requestReboot,
                 )
             }
         }
@@ -240,7 +259,7 @@ private fun DevicesScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            SectionCard("Gateway Wi-Fi") {
+            SectionCard("Wi-Fi Control") {
                 OutlinedTextField(
                     value = ssid,
                     onValueChange = { ssid = it.take(32) },
@@ -270,6 +289,28 @@ private fun DevicesScreen(
             }
         }
         item {
+            SectionCard("Wi-Fi Networks") {
+                val networks = state.wifi?.networks.orEmpty()
+                if (networks.isEmpty()) {
+                    MutedText("No Wi-Fi profiles are exposed by this gateway yet.")
+                } else {
+                    networks.forEachIndexed { index, network ->
+                        if (index > 0) HorizontalDivider()
+                        Text(network.ssid, fontWeight = FontWeight.Black)
+                        DetailRow("Band", network.band.ifBlank { "Not reported" })
+                        DetailRow(
+                            "Recovery",
+                            if (network.password.isNullOrBlank()) {
+                                "Name only; gateway hides the password"
+                            } else {
+                                "Name and password available for encrypted backup"
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(onClick = onRefresh, modifier = Modifier.weight(1f)) {
                     Text("Refresh")
@@ -296,8 +337,55 @@ private fun HomelabScreen(
     state: AppUiState,
     onRefresh: () -> Unit,
     onCreateBackup: () -> Unit,
+    onRestoreBackup: (String) -> Unit,
+    onDeleteBackup: (String) -> Unit,
 ) {
     val insights = buildAndroidInsights(state)
+    var restoreId by remember { mutableStateOf<String?>(null) }
+    var deleteId by remember { mutableStateOf<String?>(null) }
+
+    restoreId?.let { id ->
+        AlertDialog(
+            onDismissRequest = { restoreId = null },
+            title = { Text("Restore Wi-Fi configuration?") },
+            text = {
+                Text(
+                    "This replaces matching Wi-Fi names and any restorable passwords. " +
+                        "The phone may disconnect while the gateway applies the change.",
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        restoreId = null
+                        onRestoreBackup(id)
+                    },
+                ) { Text("Restore") }
+            },
+            dismissButton = {
+                TextButton(onClick = { restoreId = null }) { Text("Cancel") }
+            },
+        )
+    }
+    deleteId?.let { id ->
+        AlertDialog(
+            onDismissRequest = { deleteId = null },
+            title = { Text("Delete encrypted backup?") },
+            text = { Text("This removes the selected Wi-Fi backup from this phone.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        deleteId = null
+                        onDeleteBackup(id)
+                    },
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteId = null }) { Text("Cancel") }
+            },
+        )
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = screenPadding(),
@@ -318,8 +406,63 @@ private fun HomelabScreen(
             }
         }
         item {
-            SectionCard("Readiness Checklist") {
-                insights.setupSteps.forEach { step -> StepRow(step) }
+            SectionCard("Quick Setup") {
+                listOf(
+                    "Save and test the gateway login.",
+                    "Create an encrypted Wi-Fi backup.",
+                    "Refresh after placement, antenna, or radio changes.",
+                ).forEachIndexed { index, step ->
+                    DetailRow("${index + 1}", step)
+                }
+            }
+        }
+        item {
+            SectionCard("Encrypted Wi-Fi Vault") {
+                Text(
+                    "Backs up every Wi-Fi name and any real, unmasked password exposed by " +
+                        "the authenticated gateway API.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                DetailRow("Current profiles", state.wifi?.networks?.size?.toString() ?: "Not loaded")
+                DetailRow("Passwords available", state.wifi?.passwordCount?.toString() ?: "Not loaded")
+                Button(
+                    onClick = onCreateBackup,
+                    enabled = state.settings.passwordConfigured && !state.actionBusy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Create Encrypted Backup")
+                }
+                Text(
+                    "Protected by Android Keystore and stored in this app's private storage. " +
+                        "Clearing app data or uninstalling removes the vault.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (state.wifiBackups.isEmpty()) {
+                    MutedText("No Wi-Fi recovery backups saved on this phone.")
+                } else {
+                    state.wifiBackups.forEach { backup ->
+                        HorizontalDivider()
+                        Text(backup.id, fontWeight = FontWeight.Bold)
+                        Text(
+                            "${backup.networkCount} network(s) / ${backup.passwordCount} password(s) / " +
+                                backup.createdAt.replace("T", " ").take(16),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { restoreId = backup.id },
+                                enabled = state.settings.passwordConfigured && !state.actionBusy,
+                                modifier = Modifier.weight(1f),
+                            ) { Text("Restore") }
+                            TextButton(
+                                onClick = { deleteId = backup.id },
+                                enabled = !state.actionBusy,
+                            ) { Text("Delete") }
+                        }
+                    }
+                }
             }
         }
         item {
@@ -328,74 +471,22 @@ private fun HomelabScreen(
             }
         }
         item {
-            SectionCard("Homelab Playbook") {
-                insights.playbook.forEach { card ->
-                    Text(card.title, fontWeight = FontWeight.Black)
-                    Text(card.summary, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    card.actions.forEach { action -> Text("- $action") }
-                    Spacer(Modifier.height(8.dp))
-                }
-            }
-        }
-        item {
-            SectionCard("Local Adapter URL") {
-                val adapterReady = state.settings.advancedMode == AdvancedMode.G4arUnlockLab &&
-                    state.settings.advancedAcknowledged &&
-                    state.settings.adapterUrl.isNotBlank()
-                DetailRow("Status", if (adapterReady) "Adapter configured" else "Setup needed")
-                Text(
-                    "This is not the stock gateway login page. It is a LAN-only HTTP service running on hardware you control, such as OpenWrt/ROOTer, a Raspberry Pi, a mini PC, or a Linux box attached to the modem lab hardware.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    "The Docker web app auto-uses http://127.0.0.1:8000 inside its container. On Android, use the Docker host LAN URL or a real hardware adapter URL.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text("How to get one", fontWeight = FontWeight.Black)
-                adapterGuideSteps().forEachIndexed { index, step ->
-                    Text("${index + 1}. $step")
-                }
-                Text("Examples", fontWeight = FontWeight.Black)
-                listOf("http://router.local:8080", "http://192.168.1.2:8765", "http://rooter.lan:8080").forEach {
-                    DetailRow("URL", it)
-                }
-                Text("Expected endpoints", fontWeight = FontWeight.Black)
-                listOf(
-                    "GET /health",
-                    "POST /g4ar/firmware/backup",
-                    "POST /modem/radio/profile",
-                    "POST /modem/cell/scan",
-                    "POST /modem/lock",
-                ).forEach { Text(it) }
-                InsightRow(
-                    "Safety check",
-                    "Keep the adapter LAN-only. Do not flash random images, and do not continue without a stock backup, hashes, and a tested restore path.",
-                    "warn",
-                )
-            }
-        }
-        item {
-            SectionCard("G4AR Backup Status") {
-                if (state.backups.isEmpty()) {
-                    if (state.settings.skipStockBackup) {
-                        MutedText("Stock backup reminder skipped for now. Firmware override still requires verified backup and recovery.")
-                    } else {
-                        MutedText("No local stock backups saved on this phone yet.")
+            SectionCard("Home Network Playbook") {
+                insights.playbook.forEachIndexed { index, card ->
+                    if (index > 0) HorizontalDivider()
+                    Row(
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        TonePill(card.tone.uppercase(), card.tone)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(card.title, fontWeight = FontWeight.Black)
+                            Text(card.summary, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            card.actions.forEach { action ->
+                                Text("- $action", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
                     }
-                } else {
-                    state.backups.forEach { backup ->
-                        DetailRow(backup.id, "${backup.artifactCount} files - ${backup.firmwareVersion.ifBlank { "firmware unknown" }}")
-                    }
-                }
-                OutlinedButton(
-                    onClick = onCreateBackup,
-                    enabled = state.settings.advancedMode == AdvancedMode.G4arUnlockLab &&
-                        state.settings.advancedAcknowledged &&
-                        state.settings.adapterUrl.isNotBlank() &&
-                        !state.actionBusy,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("Create Stock Backup")
                 }
             }
         }
@@ -470,84 +561,21 @@ private fun MapScreen(
 }
 
 @Composable
-private fun DiagnosticsScreen(
-    state: AppUiState,
-    onRefresh: () -> Unit,
-    onReboot: () -> Unit,
-) {
-    var confirmReboot by remember { mutableStateOf(false) }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = screenPadding(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item {
-            SectionCard("Manual Checks") {
-                Text("The Android app only works while it is open. It does not run a watchdog or 24/7 background internet monitor.")
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Button(onClick = onRefresh, modifier = Modifier.weight(1f)) {
-                        Text("Refresh")
-                    }
-                    OutlinedButton(
-                        onClick = { confirmReboot = true },
-                        enabled = state.settings.passwordConfigured,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text("Reboot")
-                    }
-                }
-            }
-        }
-        item {
-            SectionCard("Device") {
-                DetailList(state.overview?.device.orEmpty(), "No device data loaded.")
-            }
-        }
-        items(state.overview?.sections.orEmpty(), key = { it.title }) { section ->
-            SectionCard(section.title) {
-                section.items.take(20).forEach { item ->
-                    DetailRow(item.label, item.value)
-                }
-            }
-        }
-    }
-
-    if (confirmReboot) {
-        AlertDialog(
-            onDismissRequest = { confirmReboot = false },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        confirmReboot = false
-                        onReboot()
-                    },
-                ) { Text("Reboot") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmReboot = false }) { Text("Cancel") }
-            },
-            title = { Text("Reboot gateway?") },
-            text = { Text("This sends a one-time reboot request to the gateway. The Android app will not monitor recovery in the background.") },
-        )
-    }
-}
-
-@Composable
 private fun SettingsScreen(
     state: AppUiState,
     onSave: (AppSettings) -> Unit,
     onTestLogin: () -> Unit,
-    onCreateBackup: () -> Unit,
+    onRefresh: () -> Unit,
+    onReboot: () -> Unit,
 ) {
     var host by remember(state.settings.gatewayHost) { mutableStateOf(state.settings.gatewayHost) }
     var port by remember(state.settings.gatewayPort) { mutableStateOf(state.settings.gatewayPort.toString()) }
     var username by remember(state.settings.gatewayUsername) { mutableStateOf(state.settings.gatewayUsername) }
     var password by remember(state.settings.gatewayPassword) { mutableStateOf(state.settings.gatewayPassword) }
     var labEnabled by remember(state.settings.advancedMode) { mutableStateOf(state.settings.advancedMode == AdvancedMode.G4arUnlockLab) }
-    var adapterUrl by remember(state.settings.adapterUrl) { mutableStateOf(state.settings.adapterUrl) }
     var radioProfile by remember(state.settings.radioProfile) { mutableStateOf(state.settings.radioProfile) }
     var acknowledged by remember(state.settings.advancedAcknowledged) { mutableStateOf(state.settings.advancedAcknowledged) }
-    var skipStockBackup by remember(state.settings.skipStockBackup) { mutableStateOf(state.settings.skipStockBackup) }
+    var confirmReboot by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -556,6 +584,10 @@ private fun SettingsScreen(
     ) {
         item {
             SectionCard("Gateway Login") {
+                Text(
+                    "Connect once, then leave these settings alone. The admin password is encrypted with Android Keystore on this phone.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 OutlinedTextField(host, { host = it }, label = { Text("Gateway host") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(port, { port = it }, label = { Text("Gateway API port") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(username, { username = it }, label = { Text("Username") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -580,21 +612,20 @@ private fun SettingsScreen(
                         Text("Test")
                     }
                 }
+                DetailRow("Typical G4AR address", "192.168.12.1:8080")
+                DetailRow("Connection", if (state.overview?.reachable == true) "Gateway reachable" else "Not connected")
             }
         }
         item {
-            SectionCard("G4AR Unlock / Radio Lab") {
+            SectionCard("G4AR Owner Lab") {
                 Text(
-                    "For owner-controlled Arcadyan TMO-G4AR units only. Backup and recovery should be verified before any firmware work.",
+                    "For owner-controlled Arcadyan TMO-G4AR units only. This records experiment intent and safety acknowledgement; the stock gateway API does not provide rooting, flashing, tower-lock, or radio-profile commands.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    "The local adapter URL is not the stock gateway login URL. It is a LAN-only service on hardware you control that exposes safe backup, scan, and radio-profile endpoints for lab hardware.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    "Docker web users can leave this blank there; Docker saves its internal http://127.0.0.1:8000 default. On Android, enter the Docker host LAN URL or your hardware adapter URL.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    "Warning: unofficial firmware work can permanently disable the gateway, erase calibration data, violate carrier terms, or void any remaining warranty. Keep this disabled on leased hardware.",
+                    color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.Bold,
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Enable lab", modifier = Modifier.weight(1f))
@@ -604,33 +635,22 @@ private fun SettingsScreen(
                             labEnabled = it
                             if (!it) {
                                 acknowledged = false
-                                skipStockBackup = false
                             }
                         },
                     )
                 }
-                OutlinedTextField(adapterUrl, { adapterUrl = it }, label = { Text("Local adapter URL") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                DetailRow("Example", "http://router.local:8080")
-                DetailRow("Health check", "GET /health")
-                DetailRow("Backup endpoint", "POST /g4ar/firmware/backup")
                 RadioProfilePicker(radioProfile, enabled = labEnabled) { radioProfile = it }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = acknowledged, onCheckedChange = { acknowledged = it && labEnabled }, enabled = labEnabled)
-                    Text("I own this G4AR and accept the firmware, warranty, carrier-term, and RF compliance risk.")
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = skipStockBackup, onCheckedChange = { skipStockBackup = it && labEnabled }, enabled = labEnabled)
-                    Text("Skip the stock backup reminder for now. Firmware override still requires verified backup and recovery.")
+                    Text("I own this G4AR and accept the firmware, warranty, carrier-term, and recovery risk.")
                 }
                 Button(
                     onClick = {
                         onSave(
                             state.settings.withAdvanced(
                                 labEnabled,
-                                adapterUrl,
                                 radioProfile,
                                 acknowledged,
-                                skipStockBackup,
                             ),
                         )
                     },
@@ -638,26 +658,58 @@ private fun SettingsScreen(
                 ) {
                     Text("Save Lab Settings")
                 }
-                OutlinedButton(
-                    onClick = onCreateBackup,
-                    enabled = labEnabled && acknowledged && adapterUrl.isNotBlank() && !state.actionBusy,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("Create Stock Backup")
-                }
-                if (state.backups.isEmpty()) {
-                    if (skipStockBackup) {
-                        MutedText("Stock backup reminder skipped for now. Create a backup before firmware or radio-profile experiments.")
-                    } else {
-                        MutedText("No local stock backups saved on this phone yet.")
-                    }
-                } else {
-                    state.backups.forEach { backup ->
-                        DetailRow(backup.id, "${backup.artifactCount} files - ${backup.firmwareVersion.ifBlank { "firmware unknown" }}")
-                    }
+                MutedText("The encrypted Wi-Fi recovery vault is in Lab. It backs up settings exposed by the authenticated API; it is not a raw firmware image.")
+            }
+        }
+        item {
+            SectionCard("Manual Diagnostics") {
+                Text(
+                    "This app runs only while it is open. Use the Docker service for scheduled checks and 24/7 monitoring.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                DetailRow("Gateway", if (state.overview?.reachable == true) "Online" else "Offline")
+                DetailRow("API", state.overview?.apiType ?: "Not loaded")
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(
+                        onClick = onRefresh,
+                        enabled = !state.loading && !state.actionBusy,
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Refresh") }
+                    OutlinedButton(
+                        onClick = { confirmReboot = true },
+                        enabled = state.settings.passwordConfigured && !state.actionBusy,
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Reboot") }
                 }
             }
         }
+        item {
+            SectionCard("Local Security") {
+                DetailRow("Login", "Android Keystore encrypted")
+                DetailRow("Wi-Fi vault", "Encrypted app-private storage")
+                DetailRow("Background service", "Disabled")
+                MutedText("Uninstalling the app or clearing its data permanently removes local credentials and Wi-Fi backups.")
+            }
+        }
+    }
+
+    if (confirmReboot) {
+        AlertDialog(
+            onDismissRequest = { confirmReboot = false },
+            title = { Text("Reboot gateway?") },
+            text = { Text("Internet access will be interrupted while the gateway restarts. The app will not monitor recovery in the background.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        confirmReboot = false
+                        onReboot()
+                    },
+                ) { Text("Reboot") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmReboot = false }) { Text("Cancel") }
+            },
+        )
     }
 }
 
@@ -670,12 +722,13 @@ private fun RadioProfilePicker(
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text("G4AR radio profile", fontWeight = FontWeight.SemiBold)
         RadioProfile.entries.forEach { profile ->
-            OutlinedButton(
-                onClick = { onSelected(profile) },
-                enabled = enabled,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(if (profile == selected) "${profile.label} selected" else profile.label)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(
+                    selected = profile == selected,
+                    onClick = { onSelected(profile) },
+                    enabled = enabled,
+                )
+                Text(profile.label)
             }
         }
         Text(selected.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -976,23 +1029,21 @@ private fun androidSetupSteps(state: AppUiState): List<SetupStep> {
             weight = 8,
         ),
     )
-    if (g4arEnabled && state.backups.isEmpty() && state.settings.skipStockBackup) {
-        steps += SetupStep(
-            title = "G4AR stock backup skipped for now",
-            status = "skipped",
-            tone = "warn",
-            detail = "The setup reminder is suppressed, but firmware override stays locked until backup, recovery, and hashes are verified.",
-            action = "Create a stock backup later before any firmware or radio-profile experiment.",
-            weight = 13,
-        )
-    } else if (g4arEnabled) {
+    steps += setupStep(
+        title = "Wi-Fi recovery backup saved",
+        done = state.wifiBackups.isNotEmpty(),
+        detail = "The encrypted vault can restore Wi-Fi names and any real credentials the gateway exposes.",
+        action = "Open Lab and create a phone-local encrypted Wi-Fi backup.",
+        weight = 13,
+        warn = state.settings.passwordConfigured && state.wifiBackups.isEmpty(),
+    )
+    if (g4arEnabled) {
         steps += setupStep(
-            title = "G4AR stock backup saved",
-            done = state.backups.isNotEmpty(),
-            detail = "Owned G4AR lab work needs a local stock backup before any adapter-driven firmware research.",
-            action = "Configure the local adapter URL, acknowledge the risk, then create a stock backup.",
-            weight = 13,
-            warn = state.settings.adapterUrl.isNotBlank() && state.backups.isEmpty(),
+            title = "G4AR owner risk acknowledged",
+            done = state.settings.advancedAcknowledged,
+            detail = "The owner lab records intent only; stock firmware exposes no supported root, flash, tower-lock, or radio-profile API.",
+            action = "Review and acknowledge the owner-only warning in Profile.",
+            weight = 7,
         )
     } else {
         steps += SetupStep(
@@ -1104,21 +1155,11 @@ private fun androidPlaybookCards(state: AppUiState): List<PlaybookCard> {
             tone = "info",
             summary = "Keep changes reversible: backup configs, record baselines, and avoid firmware work until recovery is proven.",
             actions = listOf(
-                "Create a stock backup before G4AR lab work.",
+                "Create an encrypted Wi-Fi recovery backup before resetting the gateway.",
                 "Keep notes with antenna placement and tower IDs.",
                 "Power the gateway and router from a UPS if possible.",
             ),
         ),
-    )
-}
-
-private fun adapterGuideSteps(): List<String> {
-    return listOf(
-        "Choose the device that will physically reach the modem or gateway lab hardware.",
-        "If using the Docker web app, leave its adapter field blank and let Docker use http://127.0.0.1:8000 internally.",
-        "Install or build a trusted adapter service on that local device.",
-        "Bind it to the LAN only and confirm GET /health works from the phone.",
-        "Paste the base URL in Settings and create a stock backup before experiments.",
     )
 }
 

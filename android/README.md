@@ -1,88 +1,55 @@
-# TMHI Control Center Android
+# TMHI Control Center for Android
 
-This folder contains the native Android app for TMHI Control Center.
+The native Android app is a local companion for supported T-Mobile Home
+Internet gateways. It connects directly to the gateway from the phone while the
+app is open; no Docker server or cloud account is required.
 
-The Android app runs fully on the phone. It talks directly to the local gateway
-over the LAN while the user has the app open. It does not run a background
-watchdog, scheduled internet monitor, or 24/7 reboot service.
+The Android app intentionally has no background watchdog, scheduled speed test,
+or automatic reboot service. Use the Docker application for 24/7 monitoring.
 
-## Current Features
+## Features
 
-- Gateway dashboard with local API reachability, device details, cellular
-  connection details, and signal quality.
-- Gateway login saved locally on the phone.
-- Connected-device list loaded directly from the gateway.
-- Wi-Fi SSID and gateway Wi-Fi radio controls when supported by the gateway API.
-- Tower map screen using OpenStreetMap/Leaflet in a WebView and optional
-  OpenCellID lookups.
-- Homelab tab with setup readiness score, next-best-action guidance, signal and
-  antenna coaching, router offload/SQM playbook, adapter URL guide, and backup
-  status.
-- Manual diagnostics, raw gateway data sections, and a manual reboot action.
-- G4AR Unlock / Radio Lab settings for owner-controlled G4AR units.
-- Local adapter stock-backup request for G4AR lab users, saved in the app's
-  private storage.
+- Five-tab, icon-first navigation for Home, Devices, Map, Lab, and Profile.
+- Gateway status, connection details, signal score, and exposed radio metrics.
+- Connected-device inventory with best-effort vendor and device identification.
+- Wi-Fi name and radio controls when the gateway API supports them.
+- OpenStreetMap tower view with optional OpenCellID tower records.
+- Signal and antenna coaching for repeatable placement tests.
+- Manual gateway refresh, login test, and guarded reboot action.
+- Android Keystore-encrypted gateway password and OpenCellID key.
+- An encrypted Wi-Fi recovery vault stored only in the app's private storage.
 
-## What Is Intentionally Not Included
+## Wi-Fi Recovery Vault
 
-- No background watchdog loop.
-- No always-on connectivity monitoring.
-- No automatic reboot logic while the app is closed.
-- No firmware download source.
-- No firmware flashing implementation.
-- No transmit-power override controls.
+The Lab tab can create a point-in-time backup of every Wi-Fi profile returned by
+the authenticated gateway API. It always records exposed Wi-Fi names. It records
+a password only when the gateway returns a real, unmasked credential.
 
-## Open In Android Studio
+Some firmware never returns Wi-Fi passwords, even after authentication. Those
+profiles are clearly marked as name-only and the app does not claim that their
+passwords can be restored.
 
-1. Open Android Studio.
-2. Choose `Open`.
-3. Select the `android/` folder.
-4. Let Gradle sync.
-5. Run the `app` configuration on a device connected to the same network as the
-   gateway.
+Restore updates matching Wi-Fi names and available credential fields. It does
+not change radio enabled state. Applying a restore can briefly disconnect the
+phone while the gateway updates its Wi-Fi configuration.
 
-The phone must be on the gateway LAN or on a network route that can reach the
-gateway IP, usually `192.168.12.1`.
+Backups are encrypted with an Android Keystore key and saved in app-private
+storage. They are bound to the current app installation and cannot be decrypted
+after the app is uninstalled or its data is cleared. Android cloud backup is
+disabled for the app.
 
-## Build From CLI
+## First-Time Setup
 
-Install a local Android toolchain first:
+1. Connect the phone to the gateway Wi-Fi or another LAN that can reach it.
+2. Open **Profile**.
+3. Confirm the host, API port, and username.
+4. Enter the gateway admin password, then tap **Save Login**.
+5. Tap **Test**.
+6. Open **Home** and refresh the gateway.
+7. Open **Lab** and create an encrypted Wi-Fi backup.
+8. Optionally add an OpenCellID key and home coordinates under **Map**.
 
-- JDK 17 or newer.
-- Android SDK with API 35.
-- Gradle compatible with Android Gradle Plugin 8.7.x.
-
-Then run:
-
-```bash
-cd android
-gradle assembleDebug
-```
-
-The debug APK will be created under:
-
-```text
-android/app/build/outputs/apk/debug/
-```
-
-## GitHub APK Artifact
-
-The repository includes a `Build Android APK` workflow. When Android files are
-pushed to `main`, GitHub Actions builds a debug APK and uploads it as the
-`tmhi-control-center-debug-apk` artifact.
-
-## First-Time Use
-
-1. Install and open the app.
-2. Go to `Settings`.
-3. Confirm the gateway host and API port.
-4. Save the gateway admin password.
-5. Tap `Test`.
-6. Go to `Dashboard` and refresh.
-7. Open `Homelab` to review the setup checklist and next best action.
-8. Optional: add an OpenCellID key on the `Map` screen.
-
-Most gateways use:
+Common G4AR values are:
 
 ```text
 Host: 192.168.12.1
@@ -90,19 +57,46 @@ Port: 8080
 Username: admin
 ```
 
-## G4AR Lab
+## Download
 
-The G4AR lab is for owner-controlled Arcadyan TMO-G4AR gateways only. The app can
-store lab intent, radio-profile preference, local adapter URL, risk
-acknowledgement, and local stock-backup manifests. Device-specific firmware
-operations must be implemented by a trusted local adapter and require verified
-backup/recovery first.
+The latest CI-built debug APK is published here:
 
-The local adapter URL is not the stock gateway login page. It is a LAN-only HTTP
-service running on hardware the user controls, such as OpenWrt/ROOTer, a
-Raspberry Pi, a mini PC, or a Linux host attached to the lab hardware.
+- [tmhi-control-center-debug.apk](https://github.com/kevin1724/tmhi-control-center/releases/download/android-latest/tmhi-control-center-debug.apk)
 
-The Docker web app can leave this field blank and automatically use its internal
-`http://127.0.0.1:8000` adapter default. The Android app should not use that
-localhost value unless the adapter is actually running on the phone. For Android,
-enter the Docker host's LAN URL or the LAN URL of the hardware adapter.
+This is a debug build for testing and is not a Play Store release. Android may
+ask for permission to install apps from the browser or file manager used to open
+the APK.
+
+## Build
+
+Requirements:
+
+- JDK 17 or newer.
+- Android SDK API 35 and build tools 35.0.0.
+- Gradle 8.9.
+
+Run:
+
+```bash
+gradle -p android :app:assembleDebug --no-daemon
+```
+
+The APK is written to:
+
+```text
+android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+The `Build Android APK` GitHub Actions workflow also builds every Android change
+pushed to `main`, uploads the `tmhi-control-center-debug-apk` artifact, and
+replaces the `android-latest` release asset.
+
+## G4AR Owner Lab
+
+The Profile tab includes an owner-only G4AR lab acknowledgement and radio-profile
+notes. It does not root, flash, unlock, increase transmit power, or force a tower.
+The stock G4AR API does not expose supported commands for those operations.
+
+Unofficial firmware work can permanently disable a gateway, erase calibration
+data, violate carrier terms, or void a warranty. Keep the owner lab disabled on
+leased hardware.

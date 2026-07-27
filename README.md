@@ -82,7 +82,10 @@ Planned project areas:
 
 The native Android app lives under [android/](android/). It runs locally on the
 phone while the user has the app open and intentionally does not include the
-web/Docker watchdog's 24/7 background internet monitoring.
+web/Docker watchdog's 24/7 background internet monitoring. Its five-tab mobile
+interface includes direct gateway controls, tower mapping, signal coaching, and
+an Android Keystore-encrypted Wi-Fi recovery vault for exposed SSIDs and
+credentials.
 
 Docker Hub page copy is available in
 [docs/DOCKER_HUB_README.md](docs/DOCKER_HUB_README.md).

@@ -108,6 +108,64 @@ class GatewayClient(
         return buildWifiConfig(getPath, updated)
     }
 
+    suspend fun restoreWifi(
+        settings: AppSettings,
+        backup: WifiBackup,
+    ): WifiRestoreResult {
+        if (backup.networks.isEmpty()) {
+            throw GatewayException("This Wi-Fi backup does not contain any network profiles.")
+        }
+        val token = authenticate(settings)
+        val wifiPayload = fetchWifiPayload(settings, token)
+        val updated = JSONObject(wifiPayload.json.toString())
+        val currentProfiles = wifiNetworkProfiles(updated)
+        val claimedPaths = mutableSetOf<List<String>>()
+        var ssidsRestored = 0
+        var passwordsRestored = 0
+
+        backup.networks.forEachIndexed { index, saved ->
+            val targetProfile = currentProfiles.firstOrNull {
+                it.sourcePath == saved.sourcePath && it.sourcePath !in claimedPaths
+            } ?: currentProfiles.firstOrNull {
+                saved.band.isNotBlank() && it.band.equals(saved.band, ignoreCase = true) &&
+                    it.sourcePath !in claimedPaths
+            } ?: currentProfiles.firstOrNull {
+                it.ssid == saved.ssid && it.sourcePath !in claimedPaths
+            } ?: currentProfiles.getOrNull(index)?.takeIf { it.sourcePath !in claimedPaths }
+                ?: return@forEachIndexed
+
+            val target = objectAtPath(updated, targetProfile.sourcePath)
+                ?: return@forEachIndexed
+            claimedPaths += targetProfile.sourcePath
+            if (setDirectStringKeys(target, WIFI_SSID_CANDIDATES, saved.ssid) > 0) {
+                ssidsRestored += 1
+            }
+            val savedPassword = saved.password
+            if (!savedPassword.isNullOrBlank() &&
+                setStringKeys(target, WIFI_PASSWORD_CANDIDATES, savedPassword) > 0
+            ) {
+                passwordsRestored += 1
+            }
+        }
+
+        if (ssidsRestored == 0 && passwordsRestored == 0) {
+            throw GatewayException("No matching writable Wi-Fi fields were found on this gateway.")
+        }
+        val setPath = WIFI_SET_PATHS[wifiPayload.path]
+            ?: wifiPayload.path.replace("get=ap", "set=ap")
+        val response = postJsonOrError(
+            "${wifiPayload.baseUrl}$setPath",
+            updated,
+            token = token,
+        )
+        if (response.error != null) throw GatewayException(response.error)
+        return WifiRestoreResult(
+            wifi = buildWifiConfig(wifiPayload.path, updated),
+            ssidsRestored = ssidsRestored,
+            passwordsRestored = passwordsRestored,
+        )
+    }
+
     suspend fun connectedDevices(settings: AppSettings): List<ConnectedDevice> {
         val token = authenticate(settings)
         val errors = mutableListOf<String>()
@@ -228,6 +286,7 @@ class GatewayClient(
     }
 
     private fun buildWifiConfig(source: String, payload: JSONObject): WifiConfig {
+        val networks = wifiNetworkProfiles(payload)
         val redacted = redactSensitive(payload) as JSONObject
         val leaves = flattenLeaves(redacted)
         val ssid = findValue(leaves, WIFI_SSID_CANDIDATES).orEmpty()
@@ -238,8 +297,104 @@ class GatewayClient(
             radioEnabled = radioEnabled,
             broadcastEnabled = broadcastEnabled,
             source = source,
+            networks = networks,
             rawJson = redacted.toString(2),
         )
+    }
+
+    private fun wifiNetworkProfiles(
+        value: Any?,
+        path: List<String> = emptyList(),
+    ): List<WifiNetworkProfile> {
+        val profiles = mutableListOf<WifiNetworkProfile>()
+        when (value) {
+            is JSONObject -> {
+                val keys = value.keys().asSequence().toList()
+                val ssidKey = keys.firstOrNull {
+                    normalizeKey(it) in WIFI_SSID_CANDIDATES && normalizeKey(it) != "bssid"
+                }
+                if (ssidKey != null) {
+                    val leaves = flattenLeaves(value)
+                    val ssid = formatScalar(value.opt(ssidKey))
+                    if (ssid.isNotBlank()) {
+                        val password = findValue(leaves, WIFI_PASSWORD_CANDIDATES)
+                            ?.takeIf(::isUsableWifiPassword)
+                        profiles += WifiNetworkProfile(
+                            sourcePath = path,
+                            ssid = ssid,
+                            password = password,
+                            band = findValue(leaves, WIFI_BAND_CANDIDATES).orEmpty(),
+                            enabled = findBoolean(value, WIFI_SSID_ENABLED_CANDIDATES),
+                            broadcastEnabled = findBoolean(
+                                value,
+                                WIFI_BROADCAST_CANDIDATES,
+                            ),
+                        )
+                    }
+                }
+                keys.forEach { key ->
+                    profiles += wifiNetworkProfiles(value.opt(key), path + key)
+                }
+            }
+            is JSONArray -> (0 until value.length()).forEach { index ->
+                profiles += wifiNetworkProfiles(value.opt(index), path + "#$index")
+            }
+        }
+        return profiles.distinctBy { it.sourcePath to it.ssid }
+    }
+
+    private fun objectAtPath(root: JSONObject, path: List<String>): JSONObject? {
+        var current: Any? = root
+        for (part in path) {
+            current = when {
+                part.startsWith("#") && current is JSONArray -> {
+                    current.opt(part.removePrefix("#").toIntOrNull() ?: return null)
+                }
+                current is JSONObject -> current.opt(part)
+                else -> return null
+            }
+        }
+        return current as? JSONObject
+    }
+
+    private fun setStringKeys(value: Any?, keysToSet: Set<String>, text: String): Int {
+        var count = 0
+        when (value) {
+            is JSONObject -> value.keys().forEach { key ->
+                if (normalizeKey(key) in keysToSet) {
+                    value.put(key, text)
+                    count += 1
+                } else {
+                    count += setStringKeys(value.opt(key), keysToSet, text)
+                }
+            }
+            is JSONArray -> (0 until value.length()).forEach { index ->
+                count += setStringKeys(value.opt(index), keysToSet, text)
+            }
+        }
+        return count
+    }
+
+    private fun setDirectStringKeys(
+        value: JSONObject,
+        keysToSet: Set<String>,
+        text: String,
+    ): Int {
+        var count = 0
+        value.keys().forEach { key ->
+            if (normalizeKey(key) in keysToSet) {
+                value.put(key, text)
+                count += 1
+            }
+        }
+        return count
+    }
+
+    private fun isUsableWifiPassword(value: String): Boolean {
+        val text = value.trim()
+        return text.isNotBlank() &&
+            text.lowercase() !in setOf("null", "[redacted]", "redacted", "hidden") &&
+            text.any { it != '*' && it != '\u2022' }
     }
 
     private fun clientDevicesFromPayload(payload: JSONObject): List<ConnectedDevice> {
@@ -623,6 +778,14 @@ class GatewayClient(
         val WIFI_RADIO_CANDIDATES = setOf("isradioenabled", "radioenabled", "radioenable", "wifienabled", "wirelessenabled", "enabled")
         val WIFI_BROADCAST_CANDIDATES = setOf("isbroadcastenabled", "broadcastenabled", "ssidbroadcast", "broadcastssid")
         val WIFI_SSID_CANDIDATES = setOf("ssid", "ssidname", "networkname", "apname")
+        val WIFI_SSID_ENABLED_CANDIDATES = setOf("enabled", "ssidenabled", "isactive")
+        val WIFI_PASSWORD_CANDIDATES = setOf(
+            "password", "passphrase", "wpakey", "wpapassphrase", "presharedkey",
+            "psk", "securitykey", "wifipassword",
+        )
+        val WIFI_BAND_CANDIDATES = setOf(
+            "band", "frequency", "frequencyband", "radio", "radioband",
+        )
         val CLIENT_FIELDS = mapOf(
             "mac_address" to setOf("mac", "macaddress", "macaddr", "clientmac", "hwaddr", "physicaladdress"),
             "ip_address" to setOf("ip", "ipaddress", "ipv4", "ipv4address", "clientip", "hostip"),

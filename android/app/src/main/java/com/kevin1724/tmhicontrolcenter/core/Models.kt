@@ -10,10 +10,8 @@ data class AppSettings(
     val mapLongitude: Double? = null,
     val mapRadiusKm: Double = 0.8,
     val advancedMode: AdvancedMode = AdvancedMode.Disabled,
-    val adapterUrl: String = "",
     val radioProfile: RadioProfile = RadioProfile.Auto,
     val advancedAcknowledged: Boolean = false,
-    val skipStockBackup: Boolean = false,
 ) {
     val gatewayBaseUrl: String
         get() = "http://$gatewayHost:$gatewayPort/TMI/v1"
@@ -24,14 +22,14 @@ data class AppSettings(
 
 enum class AdvancedMode(val label: String) {
     Disabled("Disabled"),
-    G4arUnlockLab("G4AR unlock / radio lab"),
+    G4arUnlockLab("G4AR owner lab"),
 }
 
 enum class RadioProfile(val label: String, val description: String) {
     Auto("Auto", "Leave the gateway/modem in automatic mode."),
     PreferLteAnchorNsa(
         "Prefer LTE anchor / 5G NSA",
-        "Adapter-facing intent for trying LTE anchor plus 5G NR NSA.",
+        "Comparison intent for trying LTE anchor plus 5G NR NSA.",
     ),
     LteOnlyTest("LTE-only test", "Temporary diagnostic profile for measuring LTE by itself."),
     NrSa("5G Standalone", "Prefer NR SA where supported."),
@@ -81,7 +79,26 @@ data class WifiConfig(
     val radioEnabled: Boolean? = null,
     val broadcastEnabled: Boolean? = null,
     val source: String = "",
+    val networks: List<WifiNetworkProfile> = emptyList(),
     val rawJson: String = "",
+) {
+    val passwordCount: Int
+        get() = networks.count { !it.password.isNullOrBlank() }
+}
+
+data class WifiNetworkProfile(
+    val sourcePath: List<String>,
+    val ssid: String,
+    val password: String? = null,
+    val band: String = "",
+    val enabled: Boolean? = null,
+    val broadcastEnabled: Boolean? = null,
+)
+
+data class WifiRestoreResult(
+    val wifi: WifiConfig,
+    val ssidsRestored: Int,
+    val passwordsRestored: Int,
 )
 
 data class ConnectedDevice(
@@ -139,9 +156,16 @@ data class TowerMapData(
     val errors: List<String> = emptyList(),
 )
 
-data class FirmwareBackupManifest(
+data class WifiBackupManifest(
     val id: String,
+    val createdAt: String,
+    val gatewayModel: String,
     val firmwareVersion: String,
-    val artifactCount: Int,
-    val path: String,
+    val networkCount: Int,
+    val passwordCount: Int,
+)
+
+data class WifiBackup(
+    val manifest: WifiBackupManifest,
+    val networks: List<WifiNetworkProfile>,
 )
