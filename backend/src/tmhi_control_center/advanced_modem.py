@@ -166,6 +166,18 @@ def advanced_modem_summary(settings: Any) -> dict[str, Any]:
                 adapter_configured,
                 built_in_adapter_selected=built_in_adapter_selected,
             ),
+            "usb_hardware_probe": g4ar_capability_status(
+                settings.advanced_modem_mode,
+                enabled,
+                adapter_configured,
+                built_in_adapter_selected=built_in_adapter_selected,
+            ),
+            "usb_ethernet_bridge": g4ar_capability_status(
+                settings.advanced_modem_mode,
+                enabled,
+                adapter_configured,
+                built_in_adapter_selected=built_in_adapter_selected,
+            ),
             "upload_priority_qos": capability_status(
                 enabled,
                 adapter_configured,

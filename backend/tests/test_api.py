@@ -364,6 +364,99 @@ def test_advanced_modem_lab_uses_docker_adapter_default(
     assert "ADVANCED_SKIP_STOCK_BACKUP=true\n" in saved_settings
 
 
+def test_g4ar_usb_probe_uses_configured_hardware_adapter(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    main = load_main(monkeypatch, tmp_path)
+    calls: list[str] = []
+
+    class FakeAdapterClient:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url):
+            calls.append(url)
+
+            class Response:
+                is_success = True
+                status_code = 200
+                reason_phrase = "OK"
+
+                def json(self):
+                    return {
+                        "port": {"role": "host", "speed_mbps": 5000, "vbus": True},
+                        "devices": [
+                            {
+                                "vendor_id": "0b95",
+                                "product_id": "2790",
+                                "product": "AX88279 USB 2.5G Ethernet",
+                                "usb_speed_mbps": 5000,
+                                "driver": "cdc_ncm",
+                                "interface": "usb0",
+                                "carrier": True,
+                                "link_speed_mbps": 2500,
+                            }
+                        ],
+                    }
+
+            return Response()
+
+    monkeypatch.setattr(
+        "tmhi_control_center.usb_lab.httpx.AsyncClient",
+        FakeAdapterClient,
+    )
+
+    with TestClient(main.app) as client:
+        initial = client.get("/api/g4ar/usb/status")
+        saved = client.post(
+            "/api/advanced-modem/settings",
+            json={
+                "mode": "g4ar_unlock_lab",
+                "control_url": "http://192.168.12.2:8765",
+                "acknowledged": True,
+            },
+        )
+        probed = client.post("/api/g4ar/usb/probe")
+
+    assert initial.status_code == 200
+    assert initial.json()["status"] == "lab_mode_required"
+    assert saved.status_code == 200
+    assert probed.status_code == 200
+    assert calls == ["http://192.168.12.2:8765/g4ar/usb/probe"]
+    assert probed.json()["probe"]["status"] == "link_ready"
+    assert probed.json()["probe"]["ready_for_isolated_test"] is True
+    assert probed.json()["probe"]["ready_for_lan_bridge"] is True
+
+
+def test_g4ar_usb_probe_reports_docker_hardware_boundary(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    main = load_main(monkeypatch, tmp_path)
+
+    with TestClient(main.app) as client:
+        client.post(
+            "/api/advanced-modem/settings",
+            json={
+                "mode": "g4ar_unlock_lab",
+                "control_url": "",
+                "acknowledged": True,
+            },
+        )
+        probed = client.post("/api/g4ar/usb/probe")
+
+    assert probed.status_code == 200
+    assert probed.json()["status"] == "hardware_bridge_required"
+    assert probed.json()["probe"] is None
+
+
 def test_g4ar_firmware_lab_flash_gate_requires_full_consent(
     monkeypatch,
     tmp_path,

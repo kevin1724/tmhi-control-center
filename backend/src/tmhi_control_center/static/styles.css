@@ -1251,6 +1251,157 @@ summary:focus-visible {
   margin-bottom: 14px;
 }
 
+.usb-lab-panel {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.usb-lab-header,
+.usb-lab-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.usb-lab-header h4 {
+  margin: 3px 0 0;
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.usb-lab-summary {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.usb-lab-path {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 11px 12px;
+  border-block: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.usb-lab-path span:nth-child(even) {
+  color: var(--accent);
+  font-size: 17px;
+}
+
+.usb-check-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.usb-check-grid > .empty-state {
+  grid-column: 1 / -1;
+}
+
+.usb-check {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 7px;
+  align-items: center;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.usb-check-indicator {
+  grid-row: 1 / 3;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.usb-check.is-pass .usb-check-indicator {
+  background: var(--green);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 14%, transparent);
+}
+
+.usb-check span:not(.usb-check-indicator),
+.usb-check strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.usb-check span:not(.usb-check-indicator) {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.usb-check strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.usb-device-list {
+  display: grid;
+  gap: 8px;
+}
+
+.usb-device {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px 12px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.usb-device > div {
+  display: grid;
+  gap: 2px;
+}
+
+.usb-device strong,
+.usb-device small,
+.usb-device p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.usb-device small,
+.usb-device p {
+  color: var(--muted);
+}
+
+.usb-device-link {
+  align-self: center;
+  color: var(--green);
+}
+
+.usb-device p {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 13px;
+}
+
+.usb-lab-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.usb-lab-actions small {
+  flex: 1 1 260px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 .firmware-gate {
   display: grid;
   gap: 12px;
@@ -1886,6 +2037,22 @@ th {
 
   .radio-metric:nth-child(even) {
     border-right: 0;
+  }
+
+  .usb-check-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .usb-lab-header {
+    align-items: flex-start;
+  }
+
+  .usb-lab-path {
+    grid-template-columns: 1fr;
+  }
+
+  .usb-lab-path span:nth-child(even) {
+    transform: rotate(90deg);
   }
 
   .signal-ring {

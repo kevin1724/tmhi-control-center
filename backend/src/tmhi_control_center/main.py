@@ -33,6 +33,7 @@ from .geolocation import PublicIpLocationError, PublicIpLocator
 from .insights import build_homelab_insights
 from .storage import EventStore
 from .towers import build_tower_map_payload
+from .usb_lab import UsbProbeError, g4ar_usb_status, probe_g4ar_usb
 from .watchdog import Watchdog
 
 
@@ -528,6 +529,8 @@ async def built_in_adapter_health() -> dict[str, Any]:
             "radio_profile": False,
             "cell_scan": False,
             "cell_lock": False,
+            "usb_hardware_probe": False,
+            "usb_ethernet_bridge": False,
             "firmware_flash": False,
             "tx_power_override": False,
         },
@@ -565,6 +568,49 @@ async def built_in_adapter_cell_scan() -> dict[str, Any]:
 @app.post("/modem/lock")
 async def built_in_adapter_modem_lock() -> dict[str, Any]:
     raise _built_in_adapter_not_implemented("tower lock")
+
+
+@app.get("/g4ar/usb/probe")
+async def built_in_adapter_g4ar_usb_probe() -> dict[str, Any]:
+    raise _built_in_adapter_not_implemented("G4AR USB-C hardware probe")
+
+
+@app.get("/api/g4ar/usb/status")
+async def g4ar_usb_lab_status() -> dict[str, Any]:
+    return g4ar_usb_status(settings)
+
+
+@app.post("/api/g4ar/usb/probe")
+async def g4ar_usb_lab_probe() -> dict[str, Any]:
+    if settings.advanced_modem_mode not in G4AR_LAB_MODES:
+        raise HTTPException(
+            status_code=409,
+            detail="Select G4AR unlock / radio lab mode before probing the USB-C port",
+        )
+    if not settings.advanced_modem_acknowledged:
+        raise HTTPException(
+            status_code=409,
+            detail="Acknowledge the owned-hardware research warning before probing",
+        )
+
+    try:
+        result = await probe_g4ar_usb(settings)
+    except UsbProbeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    probe = result.get("probe") or {}
+    await store.record(
+        "g4ar_usb_probe_completed",
+        "G4AR USB-C hardware probe completed",
+        {
+            "status": result.get("status"),
+            "hardware_adapter_ready": result.get("hardware_adapter_ready"),
+            "device_count": len(probe.get("devices") or []),
+            "ready_for_isolated_test": probe.get("ready_for_isolated_test"),
+            "ready_for_lan_bridge": probe.get("ready_for_lan_bridge"),
+        },
+    )
+    return result
 
 
 @app.get("/api/g4ar/firmware/status")

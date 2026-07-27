@@ -106,6 +106,8 @@ Username: admin
 - Reboot safety logic with dry-run mode, grace periods, cooldowns, and daily
   reboot limits.
 - G4AR Unlock / Radio Lab settings for owner-controlled Arcadyan TMO-G4AR units.
+- Read-only G4AR USB-C 2.5GbE probing for USB host mode, 5Gbps negotiation,
+  driver/interface readiness, carrier, link speed, and LAN bridge membership.
 
 ## Volumes
 
@@ -160,7 +162,9 @@ The built-in Docker adapter is useful for health checks and default setup. Real
 firmware backup, scan, tower lock, or radio-profile commands still require a
 trusted hardware bridge controlled by the user, such as an OpenWrt/ROOTer
 router, Raspberry Pi, mini PC, or Linux host. The adapter is expected to expose
-narrow endpoints like `GET /health` and `POST /g4ar/firmware/backup`.
+narrow endpoints like `GET /health`, `POST /g4ar/firmware/backup`, and the
+read-only `GET /g4ar/usb/probe`. Docker cannot inspect devices attached inside
+the G4AR unless a gateway-side hardware adapter reports them.
 
 Skipping the stock-backup reminder does not unlock flashing. Firmware override
 still requires verified backup, recovery, hashes, and exact consent.

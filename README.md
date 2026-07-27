@@ -51,6 +51,9 @@ installs from unknown sources. A signed release build will be added later.
 - Includes a G4AR Unlock / Radio Lab for owned Arcadyan TMO-G4AR gateways, with
   explicit warnings, backup requirements, adapter-based controls, and consent
   gates.
+- Adds a read-only G4AR USB-C 2.5GbE lab that checks USB host mode, 5Gbps
+  negotiation, Ethernet adapter detection, driver binding, interface creation,
+  carrier, link speed, and LAN bridge membership through a gateway-side adapter.
 
 ## Who It Is For
 
@@ -217,10 +220,13 @@ Use the lab for:
 - Tracking LTE anchor / 5G NSA, LTE-only, 5G SA, and scan-only profile intent.
 - Keeping firmware override work locked behind backup, recovery, hash, and
   consent requirements.
+- Probing the G4AR USB-C data port before attempting a temporary 2.5GbE LAN
+  bridge.
 
 Read the guide before enabling this mode:
 
 - [G4AR Firmware Lab Guide](docs/G4AR_FIRMWARE_LAB_GUIDE.md)
+- [G4AR USB-C 2.5GbE Lab Guide](docs/G4AR_USB_C_2_5GBE_LAB.md)
 
 The local adapter URL is not the stock gateway login page. It is the base URL of
 a small HTTP service. When the Docker app is running, TMHI Control Center
@@ -232,7 +238,9 @@ firmware backup, scan, tower lock, or radio-profile commands still require a
 trusted hardware bridge controlled by the user, such as an OpenWrt/ROOTer
 router, Raspberry Pi, mini PC, or Linux host attached to the modem lab hardware.
 TMHI Control Center only calls narrow endpoints such as `GET /health` and
-`POST /g4ar/firmware/backup`.
+`POST /g4ar/firmware/backup`. The USB-C lab expects the gateway-side adapter to
+provide a read-only `GET /g4ar/usb/probe` endpoint. Docker running on another
+computer cannot inspect devices connected inside the G4AR.
 
 The `Skip stock backup reminder for now` option only suppresses the readiness
 checklist reminder. It does not unlock firmware override. The override gate
@@ -244,6 +252,8 @@ Important limitations:
 - The app does not write firmware by itself.
 - The app does not provide transmit-power override controls.
 - Stock gateway firmware may not expose tower locking or LTE/NSA controls.
+- USB 3 and 2.5GbE are hardware-capable research targets, not a promise that
+  stock firmware includes the required USB Ethernet driver or bridge support.
 - Any custom firmware, modem commands, or external antenna modifications can
   brick hardware, void warranty, break service terms, or create RF compliance
   problems.

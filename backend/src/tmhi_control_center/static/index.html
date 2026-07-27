@@ -12,7 +12,7 @@
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
     <link rel="manifest" href="/static/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260726-radio-telemetry-2" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260727-usb-ethernet-lab-1" />
   </head>
   <body>
     <div class="app-shell">
@@ -878,6 +878,43 @@
                   </a>
                 </div>
 
+                <section class="usb-lab-panel" aria-labelledby="usbLabHeading">
+                  <div class="usb-lab-header">
+                    <div>
+                      <span class="eyebrow">USB-C network lab</span>
+                      <h4 id="usbLabHeading">2.5 GbE Data Port</h4>
+                    </div>
+                    <span id="usbLabTag" class="tag tag--muted">Not probed</span>
+                  </div>
+                  <p id="usbLabSummary" class="usb-lab-summary">
+                    Check the G4AR data port, USB speed, Ethernet driver, interface, and link.
+                  </p>
+                  <div class="usb-lab-path" aria-label="USB Ethernet path">
+                    <span>G4AR data port</span>
+                    <span aria-hidden="true">&#8594;</span>
+                    <span>AX88279</span>
+                    <span aria-hidden="true">&#8594;</span>
+                    <span>2.5GbE LAN</span>
+                  </div>
+                  <dl id="usbPlatformDetails" class="detail-list detail-list--compact"></dl>
+                  <div id="usbProbeChecks" class="usb-check-grid"></div>
+                  <div id="usbDeviceList" class="usb-device-list"></div>
+                  <div class="usb-lab-actions">
+                    <button id="usbProbeButton" class="button button--secondary" type="button">
+                      Probe Port
+                    </button>
+                    <a
+                      class="button button--secondary"
+                      href="https://github.com/kevin1724/tmhi-control-center/blob/main/docs/G4AR_USB_C_2_5GBE_LAB.md"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open Guide
+                    </a>
+                    <small>Read-only probe. No bridge or firmware settings are changed.</small>
+                  </div>
+                </section>
+
                 <div class="firmware-backup-panel">
                   <div>
                     <strong>Stock firmware backup</strong>
@@ -973,6 +1010,6 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-    <script src="/static/app.js?v=20260726-radio-telemetry-2" defer></script>
+    <script src="/static/app.js?v=20260727-usb-ethernet-lab-1" defer></script>
   </body>
 </html>

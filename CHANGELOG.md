@@ -27,6 +27,10 @@ All notable changes to this new project will be documented here.
 - Added a saved option to skip the G4AR stock-backup setup reminder while
   keeping firmware override locked behind backup, recovery, hash, and consent
   checks.
+- Added a read-only G4AR USB-C 2.5GbE lab with normalized host, SuperSpeed,
+  Ethernet-device, driver, interface, carrier, link-speed, and bridge checks.
+- Added a gateway-side `GET /g4ar/usb/probe` adapter contract, privacy filtering,
+  backend tests, and a staged USB-C hardware and recovery guide.
 
 ### Changed
 

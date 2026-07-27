@@ -14,6 +14,7 @@ const state = {
   clients: null,
   events: [],
   firmwareBackups: null,
+  usbLab: null,
   mapData: null,
   telemetryHistory: null,
   telemetryHours: 6,
@@ -158,6 +159,12 @@ const ids = [
   "towerIdentityDetails",
   "uptimeDetail",
   "uptimeMetric",
+  "usbDeviceList",
+  "usbLabSummary",
+  "usbLabTag",
+  "usbPlatformDetails",
+  "usbProbeButton",
+  "usbProbeChecks",
   "useBrowserLocationButton",
   "watchdogMetric",
   "watchdogPhaseTag",
@@ -174,6 +181,8 @@ const detailLabels = {
   band: "Band",
   broadcast_enabled: "SSID broadcast",
   built_in_adapter: "Docker adapter",
+  controller: "USB controller",
+  data_port: "Gateway port",
   cell_id: "Cell ID",
   channel_2g: "2.4 GHz channel",
   channel_5g: "5 GHz channel",
@@ -185,6 +194,7 @@ const detailLabels = {
   firmware: "Firmware",
   hardware: "Hardware",
   effective_adapter: "Adapter URL",
+  ethernet_target: "Ethernet target",
   lac: "TAC/LAC",
   manufacturer: "Manufacturer",
   mcc: "MCC",
@@ -196,6 +206,8 @@ const detailLabels = {
   operator: "Operator",
   pci: "PCI",
   plmn: "PLMN",
+  preferred_chipset: "Preferred chipset",
+  preferred_driver: "Preferred driver",
   radio: "Radio",
   radio_enabled: "Gateway Wi-Fi radios",
   radio_profile: "G4AR radio profile",
@@ -205,6 +217,7 @@ const detailLabels = {
   lte_anchor_override: "LTE anchor / NSA",
   stock_firmware_backup: "Stock backup",
   stock_backup_skipped: "Backup reminder",
+  stock_support: "Stock firmware",
   ssid: "SSID",
   ssid_2g: "2.4 GHz SSID",
   ssid_5g: "5 GHz SSID",
@@ -215,6 +228,9 @@ const detailLabels = {
   tower_match: "Tower match",
   tower_match_note: "Match note",
   tx_power: "Transmit power",
+  usb_ceiling: "USB ceiling",
+  usb_ethernet_bridge: "USB Ethernet bridge",
+  usb_hardware_probe: "USB hardware probe",
   upload_priority_qos: "Upload priority",
   uptime: "Uptime",
   wan_ipv4: "WAN IPv4",
@@ -251,6 +267,7 @@ function bindControls() {
   els.refreshClientsButton.addEventListener("click", () => refreshClients(false));
   els.lookupClientsButton.addEventListener("click", () => refreshClients(true));
   els.saveAdvancedModemButton.addEventListener("click", saveAdvancedModemSettings);
+  els.usbProbeButton.addEventListener("click", probeG4ARUsbPort);
   els.firmwareBackupButton.addEventListener("click", createG4ARFirmwareBackup);
   els.firmwareFlashButton.addEventListener("click", armG4ARFlashGate);
   els.downloadSnapshotButton.addEventListener("click", downloadSnapshot);
@@ -374,6 +391,7 @@ async function refreshAll({ quiet = false } = {}) {
     api("/api/events?limit=10"),
     api("/api/g4ar/firmware/backups"),
     api(`/api/gateway/telemetry/history?hours=${state.telemetryHours}`),
+    api("/api/g4ar/usb/status"),
   ]);
 
   const errors = [];
@@ -421,6 +439,15 @@ async function refreshAll({ quiet = false } = {}) {
     state.telemetryHistory = results[8].value;
   } else {
     errors.push(`History: ${results[8].reason.message}`);
+  }
+  if (results[9].status === "fulfilled") {
+    const previousProbe = state.usbLab?.probe || null;
+    state.usbLab = {
+      ...results[9].value,
+      probe: previousProbe,
+    };
+  } else {
+    errors.push(`USB lab: ${results[9].reason.message}`);
   }
 
   renderAll();
@@ -1578,6 +1605,8 @@ function renderAdvancedModemControls() {
       cell_scan: capabilityText(capabilities.cell_scan),
       lte_anchor_override: capabilityText(capabilities.lte_anchor_override),
       radio_mode_override: capabilityText(capabilities.radio_mode_override),
+      usb_hardware_probe: capabilityText(capabilities.usb_hardware_probe),
+      usb_ethernet_bridge: capabilityText(capabilities.usb_ethernet_bridge),
       upload_priority_qos: capabilityText(capabilities.upload_priority_qos),
       stock_firmware_backup: capabilityText(capabilities.stock_firmware_backup),
       custom_firmware_flash: capabilityText(capabilities.custom_firmware_flash),
@@ -1598,6 +1627,123 @@ function renderAdvancedModemControls() {
     "G4AR unlock / radio lab status loads after settings refresh."
   );
   renderFirmwareBackupList();
+  renderUsbLab();
+}
+
+function renderUsbLab() {
+  if (!els.usbLabTag) {
+    return;
+  }
+
+  const lab = state.usbLab || {};
+  const probe = lab.probe || null;
+  const platform = lab.platform || {};
+  const adapter = lab.recommended_adapter || {};
+  const displayStatus = probe?.status || lab.status || "not_probed";
+  const summary = probe?.summary || lab.reason || "USB-C hardware status loads after refresh.";
+  const tone =
+    displayStatus === "active_2_5gbe" || displayStatus === "link_ready"
+      ? "good"
+      : displayStatus === "interface_ready" || displayStatus === "ready_to_probe"
+        ? "info"
+        : displayStatus === "hardware_bridge_required" || displayStatus === "driver_needed"
+          ? "warn"
+          : "muted";
+
+  setTag(els.usbLabTag, humanize(displayStatus), tone);
+  setText(els.usbLabSummary, summary);
+  renderDetailList(
+    els.usbPlatformDetails,
+    {
+      controller: platform.controller || "MediaTek T750 USB 3",
+      data_port: platform.data_port || "USB Type-C data port",
+      usb_ceiling: platform.controller_speed_mbps
+        ? `${formatNetworkSpeed(platform.controller_speed_mbps)} USB`
+        : "Unknown",
+      ethernet_target: platform.ethernet_target_mbps
+        ? formatNetworkSpeed(platform.ethernet_target_mbps)
+        : "2.5 Gbps",
+      preferred_chipset: adapter.chipset || "ASIX AX88279",
+      preferred_driver: adapter.driver_preference || "CDC-NCM",
+      stock_support: platform.stock_firmware_support || "Unverified",
+    },
+    "G4AR USB platform details unavailable."
+  );
+
+  replaceChildren(els.usbProbeChecks);
+  const checks = probe?.checks || {};
+  const checkOrder = [
+    ["usb_host", "USB host"],
+    ["super_speed_5gbps", "USB 5 Gbps"],
+    ["ethernet_adapter", "Ethernet NIC"],
+    ["driver_bound", "Driver"],
+    ["network_interface", "Interface"],
+    ["carrier", "Carrier"],
+    ["link_2500mbps", "2.5G link"],
+    ["lan_bridge_member", "LAN bridge"],
+  ];
+  if (!probe) {
+    els.usbProbeChecks.append(emptyNode("Run a probe through a gateway-side hardware adapter."));
+  } else {
+    for (const [key, label] of checkOrder) {
+      const item = document.createElement("div");
+      item.className = `usb-check ${checks[key] ? "is-pass" : "is-pending"}`;
+      const indicator = document.createElement("span");
+      indicator.className = "usb-check-indicator";
+      indicator.setAttribute("aria-hidden", "true");
+      const text = document.createElement("span");
+      text.textContent = label;
+      const value = document.createElement("strong");
+      value.textContent = checks[key] ? "Ready" : "Waiting";
+      item.append(indicator, text, value);
+      els.usbProbeChecks.append(item);
+    }
+  }
+
+  replaceChildren(els.usbDeviceList);
+  const devices = Array.isArray(probe?.devices) ? probe.devices : [];
+  if (!devices.length) {
+    els.usbDeviceList.append(emptyNode("No USB Ethernet device reported yet."));
+  } else {
+    for (const device of devices) {
+      const item = document.createElement("article");
+      item.className = "usb-device";
+      const identity = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = device.product || device.manufacturer || "USB device";
+      const ids = document.createElement("small");
+      ids.textContent = compactJoin(
+        [
+          device.vendor_id && device.product_id
+            ? `${device.vendor_id}:${device.product_id}`
+            : "",
+          device.usb_speed_mbps && `USB ${formatNetworkSpeed(device.usb_speed_mbps)}`,
+        ],
+        " - "
+      );
+      identity.append(title, ids);
+
+      const link = document.createElement("strong");
+      link.className = "usb-device-link";
+      link.textContent = device.link_speed_mbps
+        ? formatNetworkSpeed(device.link_speed_mbps)
+        : device.carrier
+          ? "Link up"
+          : "No carrier";
+
+      const metadata = document.createElement("p");
+      metadata.textContent = compactJoin(
+        [
+          device.driver && `Driver ${device.driver}`,
+          device.interface && `Interface ${device.interface}`,
+          device.duplex && humanize(device.duplex),
+        ],
+        " - "
+      ) || "Waiting for driver and interface details.";
+      item.append(identity, link, metadata);
+      els.usbDeviceList.append(item);
+    }
+  }
 }
 
 function renderFirmwareBackupList() {
@@ -2582,10 +2728,34 @@ async function saveAdvancedModemSettings() {
         skip_stock_backup: els.skipStockBackupReminder.checked,
       },
     });
+    state.usbLab = await api("/api/g4ar/usb/status");
     renderAll();
     return mode === "disabled"
       ? "G4AR unlock lab disabled."
       : "Unlock / radio lab settings saved.";
+  });
+}
+
+async function probeG4ARUsbPort() {
+  if (!isG4ARLabMode(els.advancedModemMode.value)) {
+    setActionMessage("Select G4AR unlock / radio lab mode before probing the USB-C port.", "error");
+    els.advancedModemMode.focus();
+    return;
+  }
+  if (!els.advancedModemAcknowledge.checked) {
+    setActionMessage("Acknowledge the owned-hardware research warning first.", "error");
+    els.advancedModemAcknowledge.focus();
+    return;
+  }
+
+  await runAction("Probing the G4AR USB-C data port.", async () => {
+    state.usbLab = await api("/api/g4ar/usb/probe", { method: "POST" });
+    renderUsbLab();
+    const probe = state.usbLab?.probe;
+    if (!probe) {
+      return state.usbLab?.reason || "A gateway-side hardware adapter is required.";
+    }
+    return probe.summary || "USB-C hardware probe completed.";
   });
 }
 
@@ -2858,6 +3028,8 @@ function updateControlState() {
   els.advancedUploadProfile.disabled = busy || !advancedEnabled;
   els.advancedRadioProfile.disabled = busy || !g4arLabEnabled;
   els.skipStockBackupReminder.disabled = busy || !g4arLabEnabled;
+  els.usbProbeButton.disabled =
+    busy || !g4arLabEnabled || !els.advancedModemAcknowledge.checked;
   els.firmwareBackupButton.disabled = busy || !g4arBackupReady;
   els.firmwareBackupSha256.disabled = busy || !g4arLabEnabled;
   els.firmwareSha256.disabled = busy || !g4arLabEnabled;
@@ -3095,6 +3267,18 @@ function formatLatency(value) {
     return `${Math.round(value)} ms`;
   }
   return `${(value / 1000).toFixed(2)} s`;
+}
+
+function formatNetworkSpeed(value) {
+  const speed = Number(value);
+  if (!Number.isFinite(speed) || speed <= 0) {
+    return "Unknown";
+  }
+  if (speed >= 1000) {
+    const gbps = speed / 1000;
+    return `${Number.isInteger(gbps) ? gbps.toFixed(0) : gbps.toFixed(1)} Gbps`;
+  }
+  return `${Math.round(speed)} Mbps`;
 }
 
 function formatDistance(value) {
