@@ -932,6 +932,20 @@ summary:focus-visible {
   overflow-wrap: anywhere;
 }
 
+.schedule-status strong + span + strong {
+  margin-top: 8px;
+}
+
+#speedTestUsageWarning.is-warning {
+  color: var(--amber);
+  font-weight: 750;
+}
+
+#speedTestUsageWarning.is-danger {
+  color: var(--red);
+  font-weight: 800;
+}
+
 .schedule-status span,
 .privacy-note {
   color: var(--muted);

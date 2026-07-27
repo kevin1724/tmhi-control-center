@@ -18,7 +18,20 @@ logger = logging.getLogger(__name__)
 
 CLOUDFLARE_DOWNLOAD_URL = "https://speed.cloudflare.com/__down"
 CLOUDFLARE_UPLOAD_URL = "https://speed.cloudflare.com/__up"
-SPEEDTEST_CADENCES = {"disabled", "daily", "weekly", "monthly"}
+INTERVAL_CADENCE_MINUTES = {
+    "every_5_minutes": 5,
+    "every_10_minutes": 10,
+    "every_15_minutes": 15,
+    "every_30_minutes": 30,
+    "hourly": 60,
+}
+SPEEDTEST_CADENCES = {
+    "disabled",
+    "daily",
+    "weekly",
+    "monthly",
+    *INTERVAL_CADENCE_MINUTES,
+}
 SPEEDTEST_PROFILES: dict[str, dict[str, Any]] = {
     "gentle": {
         "label": "Gentle",
@@ -31,6 +44,12 @@ SPEEDTEST_PROFILES: dict[str, dict[str, Any]] = {
         "download_bytes": 25 * 1024 * 1024,
         "upload_bytes": 5 * 1024 * 1024,
         "latency_samples": 4,
+    },
+    "accurate": {
+        "label": "Accurate",
+        "download_bytes": 100 * 1024 * 1024,
+        "upload_bytes": 20 * 1024 * 1024,
+        "latency_samples": 6,
     },
 }
 ROTATING_HOURS = (2, 8, 14, 20)
@@ -64,6 +83,26 @@ def profile_summary(profile: str) -> dict[str, Any]:
     }
 
 
+def usage_summary(profile: str, cadence: str) -> dict[str, Any]:
+    per_run_bytes = int(profile_summary(profile)["estimated_bytes"])
+    interval_minutes = INTERVAL_CADENCE_MINUTES.get(cadence)
+    if cadence == "disabled":
+        runs_per_day = 0.0
+    elif interval_minutes:
+        runs_per_day = 1440 / interval_minutes
+    elif cadence == "daily":
+        runs_per_day = 1.0
+    elif cadence == "weekly":
+        runs_per_day = 1 / 7
+    else:
+        runs_per_day = 1 / 30
+    return {
+        "runs_per_day": round(runs_per_day, 4),
+        "estimated_daily_bytes": round(per_run_bytes * runs_per_day),
+        "estimated_30_day_bytes": round(per_run_bytes * runs_per_day * 30),
+    }
+
+
 def daypart_for_hour(hour: int) -> tuple[str, str]:
     for key, label, start, end in DAYPARTS:
         if start <= hour < end:
@@ -74,7 +113,15 @@ def daypart_for_hour(hour: int) -> tuple[str, str]:
 def next_initial_slot(
     now: datetime,
     timezone_offset_minutes: int,
+    cadence: str = "daily",
 ) -> tuple[datetime, int]:
+    interval_minutes = INTERVAL_CADENCE_MINUTES.get(cadence)
+    if interval_minutes:
+        return (
+            now.astimezone(timezone.utc) + timedelta(minutes=interval_minutes),
+            0,
+        )
+
     local_tz = timezone(timedelta(minutes=timezone_offset_minutes))
     local_now = now.astimezone(local_tz)
     for index, hour in enumerate(ROTATING_HOURS):
@@ -93,6 +140,14 @@ def next_scheduled_slot(
     completed_slot_index: int,
     timezone_offset_minutes: int,
 ) -> tuple[datetime, int]:
+    interval_minutes = INTERVAL_CADENCE_MINUTES.get(cadence)
+    if interval_minutes:
+        return (
+            completed_at.astimezone(timezone.utc)
+            + timedelta(minutes=interval_minutes),
+            completed_slot_index,
+        )
+
     local_tz = timezone(timedelta(minutes=timezone_offset_minutes))
     local_completed = completed_at.astimezone(local_tz)
     next_index = (completed_slot_index + 1) % len(ROTATING_HOURS)
@@ -116,7 +171,7 @@ def next_scheduled_slot(
 class LowImpactSpeedTest:
     def __init__(self, client: httpx.AsyncClient | None = None) -> None:
         self._client = client or httpx.AsyncClient(
-            timeout=httpx.Timeout(30.0, connect=10.0),
+            timeout=httpx.Timeout(180.0, connect=10.0),
             limits=httpx.Limits(max_connections=1, max_keepalive_connections=1),
             follow_redirects=True,
             headers={"User-Agent": "TMHI-Control-Center/0.1 speed-history"},
@@ -243,6 +298,7 @@ class SpeedTestManager:
             next_run, slot_index = next_initial_slot(
                 datetime.now(timezone.utc),
                 self.settings.speedtest_timezone_offset_minutes,
+                self.settings.speedtest_cadence,
             )
             await self.store.set_speed_test_schedule(next_run, slot_index)
         return await self.status()
@@ -326,7 +382,7 @@ class SpeedTestManager:
         )
         await self.store.record(
             "speed_test_completed" if result.get("success") else "speed_test_failed",
-            "Low-impact speed test completed" if result.get("success") else "Low-impact speed test failed",
+            "Speed test completed" if result.get("success") else "Speed test failed",
             {
                 "trigger": trigger,
                 "profile": result.get("profile"),
@@ -348,15 +404,33 @@ class SpeedTestManager:
     async def status(self) -> dict[str, Any]:
         schedule = await self.store.get_speed_test_schedule()
         latest = await self.store.latest_speed_test()
-        next_slot_index = int(schedule.get("slot_index", 0)) % len(ROTATING_HOURS)
+        next_run = schedule.get("next_run_at")
+        next_daypart = None
+        if next_run:
+            local_hour = (
+                next_run
+                + timedelta(minutes=self.settings.speedtest_timezone_offset_minutes)
+            ).hour
+            next_daypart = daypart_for_hour(local_hour)[1]
+        interval_minutes = INTERVAL_CADENCE_MINUTES.get(
+            self.settings.speedtest_cadence
+        )
         return {
             "cadence": self.settings.speedtest_cadence,
             "profile": profile_summary(self.settings.speedtest_profile),
+            "usage": usage_summary(
+                self.settings.speedtest_profile,
+                self.settings.speedtest_cadence,
+            ),
             "running": self.runner.running,
-            "next_run_at": schedule.get("next_run_at").isoformat()
-            if schedule.get("next_run_at")
-            else None,
-            "next_daypart": daypart_for_hour(ROTATING_HOURS[next_slot_index])[1],
+            "next_run_at": next_run.isoformat() if next_run else None,
+            "next_daypart": next_daypart,
+            "schedule_mode": "interval"
+            if interval_minutes
+            else "rotating"
+            if self.settings.speedtest_cadence != "disabled"
+            else "disabled",
+            "interval_minutes": interval_minutes,
             "timezone_offset_minutes": self.settings.speedtest_timezone_offset_minutes,
             "rotating_hours": list(ROTATING_HOURS),
             "latest": latest,

@@ -5,6 +5,22 @@ const DEFAULT_MAP_CENTER = { latitude: 39.8283, longitude: -98.5795 };
 const DEFAULT_MAP_RADIUS_KM = 0.8;
 const MAP_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const LIVE_POLL_INTERVAL_MS = 60000;
+const SPEED_TEST_PROFILE_BYTES = {
+  gentle: 12 * 1024 * 1024,
+  standard: 30 * 1024 * 1024,
+  accurate: 120 * 1024 * 1024,
+};
+const SPEED_TEST_RUNS_PER_DAY = {
+  disabled: 0,
+  every_5_minutes: 288,
+  every_10_minutes: 144,
+  every_15_minutes: 96,
+  every_30_minutes: 48,
+  hourly: 24,
+  daily: 1,
+  weekly: 1 / 7,
+  monthly: 1 / 30,
+};
 
 const state = {
   config: null,
@@ -21,6 +37,7 @@ const state = {
   telemetryHours: 6,
   speedTestStatus: null,
   speedTestHistory: null,
+  speedTestDays: 1,
   speedTestBusy: false,
   activeView: DEFAULT_VIEW,
   theme: "light",
@@ -162,6 +179,8 @@ const ids = [
   "speedTestTrendChart",
   "speedTestUpload",
   "speedTestUploadDetail",
+  "speedTestUsageEstimate",
+  "speedTestUsageWarning",
   "rsrpTrendChart",
   "rootAcceptsBrickRisk",
   "rootAssessButton",
@@ -308,6 +327,8 @@ function bindControls() {
   els.saveSettingsButton.addEventListener("click", saveSettings);
   els.speedTestRunButton.addEventListener("click", runSpeedTestNow);
   els.speedTestSaveButton.addEventListener("click", saveSpeedTestSchedule);
+  els.speedTestCadence.addEventListener("change", renderSpeedTestSchedulePreview);
+  els.speedTestProfile.addEventListener("change", renderSpeedTestSchedulePreview);
   els.rebootButton.addEventListener("click", requestReboot);
   els.seriesStartButton.addEventListener("click", startSweep);
   els.seriesStopButton.addEventListener("click", stopSweep);
@@ -362,6 +383,14 @@ function bindControls() {
       const hours = Number(button.dataset.telemetryHours);
       if (Number.isFinite(hours)) {
         refreshTelemetryHistory(hours);
+      }
+    });
+  });
+  document.querySelectorAll("[data-speedtest-days]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const days = Number(button.dataset.speedtestDays);
+      if (Number.isFinite(days)) {
+        refreshSpeedTestHistory(days);
       }
     });
   });
@@ -436,7 +465,7 @@ async function refreshAll({ quiet = false } = {}) {
     api("/api/g4ar/firmware/backups"),
     api(`/api/gateway/telemetry/history?hours=${state.telemetryHours}`),
     api("/api/speedtest/status"),
-    api("/api/speedtest/history?days=365"),
+    api(`/api/speedtest/history?days=${state.speedTestDays}`),
     api("/api/g4ar/root/status"),
   ]);
 
@@ -556,6 +585,19 @@ async function refreshTelemetryHistory(hours) {
     renderTelemetryTrends();
   } catch (error) {
     showError(`Telemetry history: ${error.message}`);
+  }
+}
+
+async function refreshSpeedTestHistory(days) {
+  state.speedTestDays = Math.max(1, Math.min(730, Number(days) || 1));
+  renderSpeedTests();
+  try {
+    state.speedTestHistory = await api(
+      `/api/speedtest/history?days=${state.speedTestDays}`
+    );
+    renderSpeedTests();
+  } catch (error) {
+    showError(`Speed history: ${error.message}`);
   }
 }
 
@@ -1285,6 +1327,77 @@ function renderTelemetryTrends() {
   }
 }
 
+function speedTestUsageEstimate(cadence, profile) {
+  const perRunBytes = SPEED_TEST_PROFILE_BYTES[profile] || SPEED_TEST_PROFILE_BYTES.gentle;
+  const runsPerDay = SPEED_TEST_RUNS_PER_DAY[cadence] ?? 0;
+  return {
+    perRunBytes,
+    runsPerDay,
+    dailyBytes: perRunBytes * runsPerDay,
+    thirtyDayBytes: perRunBytes * runsPerDay * 30,
+  };
+}
+
+function renderSpeedTestSchedulePreview() {
+  const cadence = els.speedTestCadence.value || "disabled";
+  const profile = els.speedTestProfile.value || "gentle";
+  const usage = speedTestUsageEstimate(cadence, profile);
+  const intervalLabels = {
+    every_5_minutes: "5 minutes",
+    every_10_minutes: "10 minutes",
+    every_15_minutes: "15 minutes",
+    every_30_minutes: "30 minutes",
+    hourly: "hour",
+  };
+
+  if (cadence === "disabled") {
+    setText(
+      els.speedTestScheduleDetail,
+      `${formatDataSize(usage.perRunBytes)} per manual run. Automatic tests do not use data.`
+    );
+    setText(els.speedTestUsageEstimate, "No scheduled test traffic");
+    setText(els.speedTestUsageWarning, "Manual tests use the currently saved profile.");
+    els.speedTestUsageWarning.classList.remove("is-warning", "is-danger");
+    return;
+  }
+
+  const scheduleDetail = intervalLabels[cadence]
+    ? `Runs every ${intervalLabels[cadence]} from the time this schedule is saved.`
+    : "Run times rotate through night, morning, afternoon, and evening.";
+  setText(
+    els.speedTestScheduleDetail,
+    `${formatDataSize(usage.perRunBytes)} maximum per run. ${scheduleDetail}`
+  );
+  setText(
+    els.speedTestUsageEstimate,
+    `${formatDataSize(usage.dailyBytes)} per day; ${formatDataSize(usage.thirtyDayBytes)} per 30 days`
+  );
+
+  const warnings = [];
+  if (usage.runsPerDay >= 144) {
+    warnings.push(
+      `${usage.runsPerDay.toFixed(0)} tests per day can briefly compete with active internet use.`
+    );
+  }
+  if (usage.thirtyDayBytes >= 500_000_000_000) {
+    warnings.push("This selection can exceed 500 GB of test traffic in 30 days.");
+  } else if (usage.thirtyDayBytes >= 100_000_000_000) {
+    warnings.push("This selection can exceed 100 GB of test traffic in 30 days.");
+  }
+  setText(
+    els.speedTestUsageWarning,
+    warnings.join(" ") || "Estimated maximum; failed or interrupted tests may use less."
+  );
+  els.speedTestUsageWarning.classList.toggle(
+    "is-danger",
+    usage.thirtyDayBytes >= 500_000_000_000
+  );
+  els.speedTestUsageWarning.classList.toggle(
+    "is-warning",
+    usage.thirtyDayBytes >= 100_000_000_000 && usage.thirtyDayBytes < 500_000_000_000
+  );
+}
+
 function renderSpeedTests() {
   const status = state.speedTestStatus || {};
   const history = state.speedTestHistory || {};
@@ -1295,6 +1408,11 @@ function renderSpeedTests() {
   const profileKey = status.profile?.key || state.config?.speed_test?.profile || "gentle";
   const cadenceLabels = {
     disabled: "Automatic tests off",
+    every_5_minutes: "Every 5 minutes",
+    every_10_minutes: "Every 10 minutes",
+    every_15_minutes: "Every 15 minutes",
+    every_30_minutes: "Every 30 minutes",
+    hourly: "Hourly schedule",
     daily: "Daily schedule",
     weekly: "Weekly schedule",
     monthly: "Monthly schedule",
@@ -1329,6 +1447,12 @@ function renderSpeedTests() {
     els.speedTestDataDetail,
     `${history.successful_count || 0} completed, ${history.failed_count || 0} failed`
   );
+  document.querySelectorAll("[data-speedtest-days]").forEach((button) => {
+    button.classList.toggle(
+      "is-active",
+      Number(button.dataset.speedtestDays) === state.speedTestDays
+    );
+  });
 
   if (document.activeElement !== els.speedTestCadence) {
     els.speedTestCadence.value = cadence;
@@ -1340,13 +1464,11 @@ function renderSpeedTests() {
   const nextRun = status.next_run_at ? formatDate(status.next_run_at) : "";
   setText(
     els.speedTestNextRun,
-    nextRun ? `Next: ${nextRun} (${status.next_daypart || "rotating"})` : "Automatic tests are off"
+    nextRun
+      ? `Next: ${nextRun}${status.next_daypart ? ` (${status.next_daypart})` : ""}`
+      : "Automatic tests are off"
   );
-  const perRun = Number(status.profile?.estimated_megabytes || (profileKey === "standard" ? 31.5 : 12.6));
-  setText(
-    els.speedTestScheduleDetail,
-    `${perRun.toFixed(1)} MB maximum per run. Time rotates across four dayparts.`
-  );
+  renderSpeedTestSchedulePreview();
 
   renderLineChart(
     els.speedTestTrendChart,
@@ -1368,7 +1490,7 @@ function renderSpeedTests() {
     {
       unit: "Mbps",
       decimals: 1,
-      historyHours: Number(history.range_days || 365) * 24,
+      historyHours: Number(history.range_days || state.speedTestDays) * 24,
       emptyText: "Run a test or enable a schedule to begin speed history.",
     }
   );
@@ -2893,6 +3015,19 @@ async function saveSpeedTestSchedule() {
   const cadence = els.speedTestCadence.value;
   const profile = els.speedTestProfile.value;
   const timezoneOffsetMinutes = -new Date().getTimezoneOffset();
+  const usage = speedTestUsageEstimate(cadence, profile);
+
+  if (
+    cadence !== "disabled" &&
+    (usage.runsPerDay >= 144 || usage.thirtyDayBytes >= 100_000_000_000)
+  ) {
+    const confirmed = window.confirm(
+      `This schedule can run ${usage.runsPerDay.toFixed(0)} tests per day and transfer up to ${formatDataSize(usage.thirtyDayBytes)} in 30 days. Save it anyway?`
+    );
+    if (!confirmed) {
+      return;
+    }
+  }
 
   await runAction("Saving speed test schedule.", async () => {
     state.speedTestStatus = await api("/api/speedtest/settings", {
@@ -2910,12 +3045,13 @@ async function saveSpeedTestSchedule() {
 }
 
 async function runSpeedTestNow() {
-  const estimatedMegabytes = Number(
-    state.speedTestStatus?.profile?.estimated_megabytes ||
-      (els.speedTestProfile.value === "standard" ? 31.5 : 12.6)
-  );
+  const savedProfile = state.speedTestStatus?.profile?.key || "gentle";
+  const estimatedBytes =
+    Number(state.speedTestStatus?.profile?.estimated_bytes) ||
+    SPEED_TEST_PROFILE_BYTES[savedProfile] ||
+    SPEED_TEST_PROFILE_BYTES.gentle;
   const confirmed = window.confirm(
-    `Run one low-impact speed test now? It can transfer up to ${estimatedMegabytes.toFixed(1)} MB and may briefly use part of the internet connection.`
+    `Run one ${savedProfile} speed test now? It can transfer up to ${formatDataSize(estimatedBytes)} and may briefly use part of the internet connection.`
   );
   if (!confirmed) {
     return;
@@ -2926,7 +3062,7 @@ async function runSpeedTestNow() {
     const result = await api("/api/speedtest/run", { method: "POST" });
     const [status, history] = await Promise.all([
       api("/api/speedtest/status"),
-      api("/api/speedtest/history?days=365"),
+      api(`/api/speedtest/history?days=${state.speedTestDays}`),
     ]);
     state.speedTestStatus = status;
     state.speedTestHistory = history;
@@ -3404,6 +3540,9 @@ function formatMillisecondResult(value) {
 
 function formatDataSize(value) {
   const bytes = Math.max(0, Number(value) || 0);
+  if (bytes >= 1_000_000_000_000) {
+    return `${(bytes / 1_000_000_000_000).toFixed(2)} TB`;
+  }
   if (bytes >= 1_000_000_000) {
     return `${(bytes / 1_000_000_000).toFixed(2)} GB`;
   }

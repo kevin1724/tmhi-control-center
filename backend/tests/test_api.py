@@ -1055,8 +1055,8 @@ def test_speed_test_schedule_and_manual_run(monkeypatch, tmp_path) -> None:
         settings_response = client.post(
             "/api/speedtest/settings",
             json={
-                "cadence": "weekly",
-                "profile": "gentle",
+                "cadence": "every_10_minutes",
+                "profile": "accurate",
                 "timezone_offset_minutes": -420,
             },
         )
@@ -1069,13 +1069,17 @@ def test_speed_test_schedule_and_manual_run(monkeypatch, tmp_path) -> None:
             main.speed_test_manager.runner = original_runner
 
     assert settings_response.status_code == 200
-    assert settings_response.json()["cadence"] == "weekly"
+    assert settings_response.json()["cadence"] == "every_10_minutes"
+    assert settings_response.json()["profile"]["key"] == "accurate"
+    assert settings_response.json()["interval_minutes"] == 10
+    assert settings_response.json()["usage"]["runs_per_day"] == 144
     assert settings_response.json()["next_run_at"] is not None
     assert run_response.status_code == 200
     assert run_response.json()["download_mbps"] == 150.5
     assert history_response.json()["successful_count"] == 1
     saved_settings = (tmp_path / "control-center.env").read_text(encoding="utf-8")
-    assert "SPEEDTEST_CADENCE=weekly\n" in saved_settings
+    assert "SPEEDTEST_CADENCE=every_10_minutes\n" in saved_settings
+    assert "SPEEDTEST_PROFILE=accurate\n" in saved_settings
     assert "SPEEDTEST_TIMEZONE_OFFSET_MINUTES=-420\n" in saved_settings
 
 

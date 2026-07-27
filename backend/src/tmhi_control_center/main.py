@@ -192,8 +192,18 @@ class MapSettingsUpdateRequest(BaseModel):
 
 
 class SpeedTestSettingsUpdateRequest(BaseModel):
-    cadence: Literal["disabled", "daily", "weekly", "monthly"] = "disabled"
-    profile: Literal["gentle", "standard"] = "gentle"
+    cadence: Literal[
+        "disabled",
+        "every_5_minutes",
+        "every_10_minutes",
+        "every_15_minutes",
+        "every_30_minutes",
+        "hourly",
+        "daily",
+        "weekly",
+        "monthly",
+    ] = "disabled"
+    profile: Literal["gentle", "standard", "accurate"] = "gentle"
     timezone_offset_minutes: int = Field(default=0, ge=-840, le=840)
 
 
@@ -379,7 +389,7 @@ async def update_speed_test_settings(
     await speed_test_manager.reset_schedule()
     await store.record(
         "speed_test_settings_updated",
-        "Low-impact speed test schedule updated",
+        "Speed test schedule updated",
         {
             "cadence": request.cadence,
             "profile": request.profile,

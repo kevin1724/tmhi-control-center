@@ -92,9 +92,8 @@ Username: admin
   EARFCN/NR-ARFCN, TAC, cell ID, and eNB/gNB identity when available.
 - SQLite-backed signal history with 1-hour, 6-hour, 24-hour, and 7-day RSRP,
   SINR, and real gateway-temperature charts that are omitted when unavailable.
-- Optional daily, weekly, or monthly low-impact speed history with rotating
-  time-of-day samples, download/upload/latency trends, and a gentle 12.6 MB
-  default data budget.
+- Optional speed history from 5-minute intervals through monthly schedules,
+  with a 24-hour-first chart, three test sizes, and up-front data-use estimates.
 - Gateway model, firmware, uptime, update state, WAN, radio mode, registration,
   roaming, and cellular identity details.
 - Wi-Fi SSID and gateway Wi-Fi radio controls when supported by the gateway API.
@@ -141,8 +140,8 @@ history when that feature is enabled.
 | `OPENCELLID_API_KEY` | empty | Optional tower lookup key |
 | `ADVANCED_SKIP_STOCK_BACKUP` | `false` | Suppress the G4AR stock-backup setup reminder only |
 | `FIRMWARE_BACKUP_DIR` | `/data/firmware-backups` | G4AR lab backup storage |
-| `SPEEDTEST_CADENCE` | `disabled` | Optional `daily`, `weekly`, or `monthly` speed tracking |
-| `SPEEDTEST_PROFILE` | `gentle` | `gentle` (about 12.6 MB) or `standard` (about 31.5 MB) per run |
+| `SPEEDTEST_CADENCE` | `disabled` | `every_5_minutes`, `every_10_minutes`, `every_15_minutes`, `every_30_minutes`, `hourly`, `daily`, `weekly`, or `monthly` |
+| `SPEEDTEST_PROFILE` | `gentle` | `gentle` (12.6 MB), `standard` (31.5 MB), or `accurate` (125.8 MB) per run |
 
 The app also creates `/data/control-center.env` and can update settings from the
 web UI.

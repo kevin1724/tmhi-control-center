@@ -9,6 +9,8 @@ from tmhi_control_center.speedtest import (
     LowImpactSpeedTest,
     next_initial_slot,
     next_scheduled_slot,
+    profile_summary,
+    usage_summary,
 )
 
 
@@ -62,3 +64,34 @@ def test_monthly_schedule_handles_short_months() -> None:
 
     assert next_run == datetime(2026, 2, 28, 8, 0, tzinfo=timezone.utc)
     assert next_slot == 1
+
+
+def test_interval_schedule_runs_from_save_and_completion_times() -> None:
+    now = datetime(2026, 7, 27, 16, 3, 42, tzinfo=timezone.utc)
+    first_run, first_slot = next_initial_slot(
+        now,
+        -7 * 60,
+        "every_5_minutes",
+    )
+    second_run, second_slot = next_scheduled_slot(
+        first_run,
+        "every_10_minutes",
+        first_slot,
+        -7 * 60,
+    )
+
+    assert first_run == datetime(2026, 7, 27, 16, 8, 42, tzinfo=timezone.utc)
+    assert first_slot == 0
+    assert second_run == datetime(2026, 7, 27, 16, 18, 42, tzinfo=timezone.utc)
+    assert second_slot == 0
+
+
+def test_accurate_profile_and_five_minute_usage_are_explicit() -> None:
+    profile = profile_summary("accurate")
+    usage = usage_summary("accurate", "every_5_minutes")
+
+    assert profile["download_bytes"] == 100 * 1024 * 1024
+    assert profile["upload_bytes"] == 20 * 1024 * 1024
+    assert profile["estimated_megabytes"] == 125.8
+    assert usage["runs_per_day"] == 288
+    assert usage["estimated_daily_bytes"] == profile["estimated_bytes"] * 288

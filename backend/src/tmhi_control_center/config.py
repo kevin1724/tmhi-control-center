@@ -352,12 +352,26 @@ class Settings:
                 raise ValueError("ADVANCED_MODEM_CONTROL_URL must be an http(s) URL")
         if not self.firmware_backup_dir:
             raise ValueError("FIRMWARE_BACKUP_DIR cannot be empty")
-        if self.speedtest_cadence not in {"disabled", "daily", "weekly", "monthly"}:
+        if self.speedtest_cadence not in {
+            "disabled",
+            "every_5_minutes",
+            "every_10_minutes",
+            "every_15_minutes",
+            "every_30_minutes",
+            "hourly",
+            "daily",
+            "weekly",
+            "monthly",
+        }:
             raise ValueError(
-                "SPEEDTEST_CADENCE must be disabled, daily, weekly, or monthly"
+                "SPEEDTEST_CADENCE must be disabled, every_5_minutes, "
+                "every_10_minutes, every_15_minutes, every_30_minutes, hourly, "
+                "daily, weekly, or monthly"
             )
-        if self.speedtest_profile not in {"gentle", "standard"}:
-            raise ValueError("SPEEDTEST_PROFILE must be gentle or standard")
+        if self.speedtest_profile not in {"gentle", "standard", "accurate"}:
+            raise ValueError(
+                "SPEEDTEST_PROFILE must be gentle, standard, or accurate"
+            )
         if not -840 <= self.speedtest_timezone_offset_minutes <= 840:
             raise ValueError(
                 "SPEEDTEST_TIMEZONE_OFFSET_MINUTES must be between -840 and 840"

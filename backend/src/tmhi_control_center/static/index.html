@@ -239,7 +239,7 @@
               <div class="section-heading">
                 <div>
                   <p class="eyebrow">Connection History</p>
-                  <h2 id="speedHistoryHeading">Low-Impact Speed Tracking</h2>
+                  <h2 id="speedHistoryHeading">Speed Tracking</h2>
                 </div>
                 <div class="section-actions">
                   <span id="speedTestHistoryTag" class="tag tag--muted">Disabled</span>
@@ -279,7 +279,12 @@
                       <span>Measured Throughput</span>
                       <strong>Download and Upload</strong>
                     </div>
-                    <small>Mbps</small>
+                    <div class="segmented-control" aria-label="Speed-test history range">
+                      <button class="segment-button is-active" type="button" data-speedtest-days="1">24h</button>
+                      <button class="segment-button" type="button" data-speedtest-days="7">7d</button>
+                      <button class="segment-button" type="button" data-speedtest-days="30">30d</button>
+                      <button class="segment-button" type="button" data-speedtest-days="365">1y</button>
+                    </div>
                   </div>
                   <div id="speedTestTrendChart" class="telemetry-chart"></div>
                   <div id="speedTestDayparts" class="daypart-grid"></div>
@@ -291,16 +296,22 @@
                     <span>Automatic test</span>
                     <select id="speedTestCadence">
                       <option value="disabled">Off</option>
+                      <option value="every_5_minutes">Every 5 minutes</option>
+                      <option value="every_10_minutes">Every 10 minutes</option>
+                      <option value="every_15_minutes">Every 15 minutes</option>
+                      <option value="every_30_minutes">Every 30 minutes</option>
+                      <option value="hourly">Every hour</option>
                       <option value="daily">Once a day</option>
                       <option value="weekly">Once a week</option>
                       <option value="monthly">Once a month</option>
                     </select>
                   </label>
                   <label class="field">
-                    <span>Data budget</span>
+                    <span>Test size</span>
                     <select id="speedTestProfile">
                       <option value="gentle">Gentle - about 12 MB</option>
                       <option value="standard">Standard - about 31 MB</option>
+                      <option value="accurate">Accurate - about 126 MB</option>
                     </select>
                   </label>
                   <button id="speedTestSaveButton" class="button button--primary" type="button">
@@ -308,10 +319,12 @@
                   </button>
                   <div class="schedule-status">
                     <strong id="speedTestNextRun">Automatic tests are off</strong>
-                    <span id="speedTestScheduleDetail">Rotates through night, morning, afternoon, and evening.</span>
+                    <span id="speedTestScheduleDetail">Choose a schedule and test size.</span>
+                    <strong id="speedTestUsageEstimate">No scheduled test traffic</strong>
+                    <span id="speedTestUsageWarning">Manual tests still use the selected profile.</span>
                   </div>
                   <p class="privacy-note">
-                    Tests run one sample at a time. Measurement traffic and metadata go to Cloudflare;
+                    Download and upload samples run one at a time. Measurement traffic and metadata go to Cloudflare;
                     result history stays in this app's local database.
                   </p>
                 </fieldset>
