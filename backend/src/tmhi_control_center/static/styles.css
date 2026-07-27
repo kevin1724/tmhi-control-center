@@ -26,6 +26,8 @@
   --lte-series: #0f766e;
   --nr-series: #d61f69;
   --thermal-series: #b7791f;
+  --speed-download-series: #2563eb;
+  --speed-upload-series: #0f766e;
   --shadow: 0 18px 42px rgba(20, 25, 34, 0.08);
   --focus: rgba(226, 0, 116, 0.28);
 }
@@ -58,6 +60,8 @@
   --lte-series: #5eead4;
   --nr-series: #f472b6;
   --thermal-series: #f2c56b;
+  --speed-download-series: #7aa7ff;
+  --speed-upload-series: #5eead4;
   --shadow: none;
   --focus: rgba(244, 114, 182, 0.34);
 }
@@ -864,6 +868,142 @@ summary:focus-visible {
   gap: 14px;
 }
 
+.speed-history-section {
+  display: grid;
+  gap: 14px;
+}
+
+.speed-history-section > .section-heading {
+  margin-bottom: 0;
+}
+
+.speed-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.speed-summary-item {
+  min-width: 0;
+  min-height: 102px;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.speed-summary-item:nth-child(1) {
+  border-top-color: var(--speed-download-series);
+}
+
+.speed-summary-item:nth-child(2) {
+  border-top-color: var(--speed-upload-series);
+}
+
+.speed-summary-item span,
+.daypart-item span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.speed-summary-item strong {
+  display: block;
+  margin-top: 7px;
+  font-size: 23px;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.speed-summary-item small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.speed-history-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(290px, 0.5fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.speed-chart-panel {
+  min-height: 390px;
+}
+
+.speed-chart-panel .telemetry-chart {
+  min-height: 220px;
+}
+
+.speed-schedule-panel {
+  min-height: 390px;
+  padding: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.schedule-status {
+  display: grid;
+  gap: 4px;
+  margin-top: 15px;
+  padding: 11px 0;
+  border-block: 1px solid var(--line);
+}
+
+.schedule-status strong,
+.schedule-status span {
+  overflow-wrap: anywhere;
+}
+
+.schedule-status span,
+.privacy-note {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.privacy-note {
+  margin: 12px 0 0;
+}
+
+.daypart-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.daypart-item {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.daypart-item strong,
+.daypart-item small {
+  display: block;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+
+.daypart-item strong {
+  font-size: 14px;
+}
+
+.daypart-item small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .chart-panel {
   min-width: 0;
   min-height: 304px;
@@ -980,6 +1120,14 @@ summary:focus-visible {
 
 .chart-series--thermal {
   color: var(--thermal-series);
+}
+
+.chart-series--download {
+  color: var(--speed-download-series);
+}
+
+.chart-series--upload {
+  color: var(--speed-upload-series);
 }
 
 .detail-list,
@@ -1927,6 +2075,14 @@ th {
 }
 
 @media (max-width: 980px) {
+  .speed-history-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .speed-schedule-panel {
+    min-height: 0;
+  }
+
   .app-shell {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1977,6 +2133,10 @@ th {
 }
 
 @media (max-width: 760px) {
+  .speed-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .topbar {
     align-items: flex-start;
     flex-direction: column;
@@ -2080,6 +2240,16 @@ th {
 }
 
 @media (max-width: 560px) {
+  .daypart-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .speed-history-section .section-actions .button {
+    min-height: 42px;
+    width: 100%;
+    flex: 0 0 auto;
+  }
+
   .sidebar {
     gap: 10px;
     padding: 10px;

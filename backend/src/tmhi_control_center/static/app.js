@@ -18,6 +18,9 @@ const state = {
   mapData: null,
   telemetryHistory: null,
   telemetryHours: 6,
+  speedTestStatus: null,
+  speedTestHistory: null,
+  speedTestBusy: false,
   activeView: DEFAULT_VIEW,
   theme: "light",
   refreshing: false,
@@ -146,6 +149,23 @@ const ids = [
   "signalSummary",
   "sinrTrendChart",
   "skipStockBackupReminder",
+  "speedTestCadence",
+  "speedTestDataDetail",
+  "speedTestDataUsed",
+  "speedTestDayparts",
+  "speedTestDownload",
+  "speedTestDownloadDetail",
+  "speedTestHistoryTag",
+  "speedTestLatency",
+  "speedTestLatencyDetail",
+  "speedTestNextRun",
+  "speedTestProfile",
+  "speedTestRunButton",
+  "speedTestSaveButton",
+  "speedTestScheduleDetail",
+  "speedTestTrendChart",
+  "speedTestUpload",
+  "speedTestUploadDetail",
   "rsrpTrendChart",
   "telemetryFreshness",
   "telemetryHistoryTag",
@@ -272,6 +292,8 @@ function bindControls() {
   els.firmwareFlashButton.addEventListener("click", armG4ARFlashGate);
   els.downloadSnapshotButton.addEventListener("click", downloadSnapshot);
   els.saveSettingsButton.addEventListener("click", saveSettings);
+  els.speedTestRunButton.addEventListener("click", runSpeedTestNow);
+  els.speedTestSaveButton.addEventListener("click", saveSpeedTestSchedule);
   els.rebootButton.addEventListener("click", requestReboot);
   els.seriesStartButton.addEventListener("click", startSweep);
   els.seriesStopButton.addEventListener("click", stopSweep);
@@ -392,6 +414,8 @@ async function refreshAll({ quiet = false } = {}) {
     api("/api/g4ar/firmware/backups"),
     api(`/api/gateway/telemetry/history?hours=${state.telemetryHours}`),
     api("/api/g4ar/usb/status"),
+    api("/api/speedtest/status"),
+    api("/api/speedtest/history?days=365"),
   ]);
 
   const errors = [];
@@ -448,6 +472,16 @@ async function refreshAll({ quiet = false } = {}) {
     };
   } else {
     errors.push(`USB lab: ${results[9].reason.message}`);
+  }
+  if (results[10].status === "fulfilled") {
+    state.speedTestStatus = results[10].value;
+  } else {
+    errors.push(`Speed schedule: ${results[10].reason.message}`);
+  }
+  if (results[11].status === "fulfilled") {
+    state.speedTestHistory = results[11].value;
+  } else {
+    errors.push(`Speed history: ${results[11].reason.message}`);
   }
 
   renderAll();
@@ -547,6 +581,7 @@ function renderAll() {
   renderOverviewMetrics();
   renderRadioStack();
   renderTelemetryTrends();
+  renderSpeedTests();
   renderSignal();
   renderDetails();
   renderControls();
@@ -1256,6 +1291,115 @@ function renderTelemetryTrends() {
   );
 }
 
+function renderSpeedTests() {
+  const status = state.speedTestStatus || {};
+  const history = state.speedTestHistory || {};
+  const points = Array.isArray(history.points) ? history.points : [];
+  const successful = points.filter((point) => point.success);
+  const latest = successful.length ? successful[successful.length - 1] : null;
+  const cadence = status.cadence || state.config?.speed_test?.cadence || "disabled";
+  const profileKey = status.profile?.key || state.config?.speed_test?.profile || "gentle";
+  const cadenceLabels = {
+    disabled: "Automatic tests off",
+    daily: "Daily schedule",
+    weekly: "Weekly schedule",
+    monthly: "Monthly schedule",
+  };
+
+  setTag(
+    els.speedTestHistoryTag,
+    status.running || state.speedTestBusy
+      ? "Test running"
+      : cadenceLabels[cadence] || "Schedule unknown",
+    status.running || state.speedTestBusy ? "warn" : cadence === "disabled" ? "muted" : "good"
+  );
+  setText(els.speedTestDownload, formatSpeedResult(latest?.download_mbps));
+  setText(els.speedTestUpload, formatSpeedResult(latest?.upload_mbps));
+  setText(els.speedTestLatency, formatMillisecondResult(latest?.latency_ms));
+  setText(els.speedTestDataUsed, formatDataSize(history.total_bytes || 0));
+  setText(
+    els.speedTestDownloadDetail,
+    latest ? `Measured ${formatDate(latest.observed_at)}` : "No samples yet"
+  );
+  setText(
+    els.speedTestUploadDetail,
+    history.averages?.upload_mbps != null
+      ? `${formatSpeedResult(history.averages.upload_mbps)} average`
+      : "No samples yet"
+  );
+  setText(
+    els.speedTestLatencyDetail,
+    latest?.jitter_ms != null ? `${formatMillisecondResult(latest.jitter_ms)} jitter` : "Idle sample"
+  );
+  setText(
+    els.speedTestDataDetail,
+    `${history.successful_count || 0} completed, ${history.failed_count || 0} failed`
+  );
+
+  if (document.activeElement !== els.speedTestCadence) {
+    els.speedTestCadence.value = cadence;
+  }
+  if (document.activeElement !== els.speedTestProfile) {
+    els.speedTestProfile.value = profileKey;
+  }
+
+  const nextRun = status.next_run_at ? formatDate(status.next_run_at) : "";
+  setText(
+    els.speedTestNextRun,
+    nextRun ? `Next: ${nextRun} (${status.next_daypart || "rotating"})` : "Automatic tests are off"
+  );
+  const perRun = Number(status.profile?.estimated_megabytes || (profileKey === "standard" ? 31.5 : 12.6));
+  setText(
+    els.speedTestScheduleDetail,
+    `${perRun.toFixed(1)} MB maximum per run. Time rotates across four dayparts.`
+  );
+
+  renderLineChart(
+    els.speedTestTrendChart,
+    successful,
+    [
+      {
+        key: "download",
+        label: "Download",
+        className: "chart-series--download",
+        read: (point) => point.download_mbps,
+      },
+      {
+        key: "upload",
+        label: "Upload",
+        className: "chart-series--upload",
+        read: (point) => point.upload_mbps,
+      },
+    ],
+    {
+      unit: "Mbps",
+      decimals: 1,
+      historyHours: Number(history.range_days || 365) * 24,
+      emptyText: "Run a test or enable a schedule to begin speed history.",
+    }
+  );
+
+  replaceChildren(els.speedTestDayparts);
+  const dayparts = Array.isArray(history.dayparts) ? history.dayparts : [];
+  for (const part of dayparts) {
+    const item = document.createElement("article");
+    item.className = "daypart-item";
+    const label = document.createElement("span");
+    label.textContent = part.label;
+    const value = document.createElement("strong");
+    value.textContent = part.count
+      ? `${Number(part.download_mbps).toFixed(0)} down / ${Number(part.upload_mbps).toFixed(0)} up`
+      : "No sample";
+    const count = document.createElement("small");
+    count.textContent = part.count ? `${part.count} sample${part.count === 1 ? "" : "s"}` : "Waiting";
+    item.append(label, value, count);
+    els.speedTestDayparts.append(item);
+  }
+  if (!dayparts.length) {
+    els.speedTestDayparts.append(emptyNode("Daypart averages will appear as scheduled tests rotate."));
+  }
+}
+
 function telemetryPointsWithCurrent() {
   const stored = Array.isArray(state.telemetryHistory?.points)
     ? state.telemetryHistory.points.slice()
@@ -1382,7 +1526,7 @@ function renderLineChart(container, points, seriesDefinitions, options) {
       class: "chart-axis-label",
       "text-anchor": index === 0 ? "start" : index === 2 ? "end" : "middle",
     });
-    label.textContent = formatChartTime(time, state.telemetryHours);
+    label.textContent = formatChartTime(time, options.historyHours ?? state.telemetryHours);
     svg.append(label);
   });
 
@@ -2845,6 +2989,55 @@ async function saveSettings() {
   });
 }
 
+async function saveSpeedTestSchedule() {
+  const cadence = els.speedTestCadence.value;
+  const profile = els.speedTestProfile.value;
+  const timezoneOffsetMinutes = -new Date().getTimezoneOffset();
+
+  await runAction("Saving speed test schedule.", async () => {
+    state.speedTestStatus = await api("/api/speedtest/settings", {
+      method: "POST",
+      body: {
+        cadence,
+        profile,
+        timezone_offset_minutes: timezoneOffsetMinutes,
+      },
+    });
+    state.config = await api("/api/config");
+    renderAll();
+    return cadence === "disabled" ? "Automatic speed tests turned off." : "Speed test schedule saved.";
+  });
+}
+
+async function runSpeedTestNow() {
+  const estimatedMegabytes = Number(
+    state.speedTestStatus?.profile?.estimated_megabytes ||
+      (els.speedTestProfile.value === "standard" ? 31.5 : 12.6)
+  );
+  const confirmed = window.confirm(
+    `Run one low-impact speed test now? It can transfer up to ${estimatedMegabytes.toFixed(1)} MB and may briefly use part of the internet connection.`
+  );
+  if (!confirmed) {
+    return;
+  }
+
+  state.speedTestBusy = true;
+  await runAction("Running sequential download and upload samples.", async () => {
+    const result = await api("/api/speedtest/run", { method: "POST" });
+    const [status, history] = await Promise.all([
+      api("/api/speedtest/status"),
+      api("/api/speedtest/history?days=365"),
+    ]);
+    state.speedTestStatus = status;
+    state.speedTestHistory = history;
+    renderAll();
+    return `Speed test complete: ${formatSpeedResult(result.download_mbps)} down, ${formatSpeedResult(result.upload_mbps)} up.`;
+  });
+  state.speedTestBusy = false;
+  renderSpeedTests();
+  updateControlState();
+}
+
 async function requestReboot() {
   const force = els.forceReboot.checked;
   const confirmed = window.confirm(
@@ -2980,6 +3173,7 @@ function updateControlState() {
     state.mapBusy ||
     state.gatewayLoginBusy ||
     state.snapshotBusy ||
+    state.speedTestBusy ||
     state.seriesRunning;
   const hasPassword = Boolean(els.gatewayPassword.value);
   const configured = Boolean(state.config?.gateway_password_configured);
@@ -3012,6 +3206,10 @@ function updateControlState() {
   els.forgetGatewayButton.disabled = busy || !configured;
   els.saveWifiButton.disabled = busy || !configured || !els.wifiSsid.value.trim();
   els.saveSettingsButton.disabled = busy;
+  els.speedTestRunButton.disabled = busy || Boolean(state.speedTestStatus?.running);
+  els.speedTestSaveButton.disabled = busy;
+  els.speedTestCadence.disabled = busy;
+  els.speedTestProfile.disabled = busy;
   els.downloadSnapshotButton.disabled = busy;
   els.saveAdvancedModemButton.disabled =
     busy || (advancedEnabled && !els.advancedModemAcknowledge.checked);
@@ -3279,6 +3477,24 @@ function formatNetworkSpeed(value) {
     return `${Number.isInteger(gbps) ? gbps.toFixed(0) : gbps.toFixed(1)} Gbps`;
   }
   return `${Math.round(speed)} Mbps`;
+}
+
+function formatSpeedResult(value) {
+  const speed = Number(value);
+  return Number.isFinite(speed) ? `${speed.toFixed(speed >= 100 ? 0 : 1)} Mbps` : "--";
+}
+
+function formatMillisecondResult(value) {
+  const milliseconds = Number(value);
+  return Number.isFinite(milliseconds) ? `${milliseconds.toFixed(milliseconds >= 100 ? 0 : 1)} ms` : "--";
+}
+
+function formatDataSize(value) {
+  const bytes = Math.max(0, Number(value) || 0);
+  if (bytes >= 1_000_000_000) {
+    return `${(bytes / 1_000_000_000).toFixed(2)} GB`;
+  }
+  return `${(bytes / 1_000_000).toFixed(bytes >= 100_000_000 ? 0 : 1)} MB`;
 }
 
 function formatDistance(value) {

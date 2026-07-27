@@ -31,6 +31,9 @@ installs from unknown sources. A signed release build will be added later.
 - Stores up to 14 days of compact telemetry in SQLite and graphs LTE/5G RSRP,
   SINR, and gateway temperature across 1-hour, 6-hour, 24-hour, and 7-day
   ranges.
+- Tracks download, upload, latency, and jitter with optional daily, weekly, or
+  monthly low-impact speed tests. Scheduled samples rotate through four
+  dayparts, run sequentially, and default to a roughly 12.6 MB data budget.
 - Gives a Homelab readiness score with next-best-action guidance for setup,
   signal tuning, tower data, LAN inventory, watchdog safety, and G4AR backups.
 - Displays useful gateway data such as model, firmware, uptime, WAN info,
@@ -172,6 +175,8 @@ Common settings:
 | `OPENCELLID_API_KEY` | empty | Optional tower lookup key |
 | `ADVANCED_SKIP_STOCK_BACKUP` | `false` | Suppress the G4AR stock-backup setup reminder without unlocking firmware work |
 | `FIRMWARE_BACKUP_DIR` | `/data/firmware-backups` | Local G4AR backup storage |
+| `SPEEDTEST_CADENCE` | `disabled` | Optional `daily`, `weekly`, or `monthly` speed history |
+| `SPEEDTEST_PROFILE` | `gentle` | Per-run data budget: `gentle` or `standard` |
 | `DRY_RUN` | `true` | Prevent automatic reboot actions while testing |
 
 See [.env.example](.env.example) for the full reference.
@@ -180,7 +185,16 @@ See [.env.example](.env.example) for the full reference.
 
 `Dashboard` gives a live overview of internet status, gateway status, signal
 quality, radio mode, gateway uptime, conditional temperature data, separate
-LTE/5G telemetry, historical charts, cellular details, and quick actions.
+LTE/5G telemetry, historical charts, low-impact speed history, cellular
+details, and quick actions.
+
+Speed history is disabled by default. The dashboard can schedule one test per
+day, week, or month and rotates scheduled tests through night, morning,
+afternoon, and evening. Download and upload samples run one after the other so
+the feature does not create parallel test traffic. The gentle profile transfers
+at most about 12.6 MB per run. Test traffic and measurement metadata go to
+Cloudflare; saved results stay in the local SQLite database. See
+[Low-Impact Speed History](docs/SPEED_TEST_HISTORY.md) for details.
 
 Temperature is shown only when the gateway firmware returns a real sensor
 reading. Stock G4AR firmware commonly omits it, so the dashboard reports `Not

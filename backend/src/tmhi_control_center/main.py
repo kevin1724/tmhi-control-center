@@ -31,6 +31,7 @@ from .firmware_backup import (
 from .gateway import GatewayAuthenticationError, GatewayError, UnifiedGatewayClient
 from .geolocation import PublicIpLocationError, PublicIpLocator
 from .insights import build_homelab_insights
+from .speedtest import SpeedTestBusyError, SpeedTestError, SpeedTestManager
 from .storage import EventStore
 from .towers import build_tower_map_payload
 from .usb_lab import UsbProbeError, g4ar_usb_status, probe_g4ar_usb
@@ -61,14 +62,21 @@ gateway = UnifiedGatewayClient(
 )
 watchdog = Watchdog(settings, checker, gateway, store)
 watchdog_task: asyncio.Task[None] | None = None
+speed_test_manager = SpeedTestManager(settings, store)
+speed_test_task: asyncio.Task[None] | None = None
 STATIC_DIR = Path(__file__).parent / "static"
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    global watchdog_task
+    global watchdog_task, speed_test_task
     await store.initialize()
+    await speed_test_manager.initialize()
     watchdog_task = asyncio.create_task(watchdog.run(), name="tmhi-control-center")
+    speed_test_task = asyncio.create_task(
+        speed_test_manager.run_scheduler(),
+        name="tmhi-speed-test-scheduler",
+    )
     try:
         yield
     finally:
@@ -79,6 +87,13 @@ async def lifespan(_: FastAPI):
                 await watchdog_task
             except asyncio.CancelledError:
                 pass
+        if speed_test_task:
+            speed_test_task.cancel()
+            try:
+                await speed_test_task
+            except asyncio.CancelledError:
+                pass
+        await speed_test_manager.stop()
         await checker.close()
         await gateway.close()
 
@@ -165,6 +180,12 @@ class MapSettingsUpdateRequest(BaseModel):
     opencellid_api_key: str | None = Field(default=None, max_length=256, repr=False)
     clear_opencellid_api_key: bool = False
     clear_location: bool = False
+
+
+class SpeedTestSettingsUpdateRequest(BaseModel):
+    cadence: Literal["disabled", "daily", "weekly", "monthly"] = "disabled"
+    profile: Literal["gentle", "standard"] = "gentle"
+    timezone_offset_minutes: int = Field(default=0, ge=-840, le=840)
 
 
 class WifiUpdateRequest(BaseModel):
@@ -301,6 +322,62 @@ async def gateway_telemetry_history(
     limit: int = Query(default=720, ge=20, le=2000),
 ) -> dict[str, Any]:
     return await store.telemetry_history(hours=hours, limit=limit)
+
+
+@app.get("/api/speedtest/status")
+async def speed_test_status() -> dict[str, Any]:
+    return await speed_test_manager.status()
+
+
+@app.get("/api/speedtest/history")
+async def speed_test_history(
+    days: int = Query(default=365, ge=1, le=730),
+    limit: int = Query(default=1000, ge=20, le=2000),
+) -> dict[str, Any]:
+    return await store.speed_test_history(days=days, limit=limit)
+
+
+@app.post("/api/speedtest/run")
+async def run_speed_test() -> dict[str, Any]:
+    try:
+        return await speed_test_manager.run(trigger="manual")
+    except SpeedTestBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except SpeedTestError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/api/speedtest/settings")
+async def update_speed_test_settings(
+    request: SpeedTestSettingsUpdateRequest,
+) -> dict[str, Any]:
+    try:
+        managed_env.set_value("SPEEDTEST_CADENCE", request.cadence)
+        managed_env.set_value("SPEEDTEST_PROFILE", request.profile)
+        managed_env.set_value(
+            "SPEEDTEST_TIMEZONE_OFFSET_MINUTES",
+            str(request.timezone_offset_minutes),
+        )
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Speed test schedule could not be saved",
+        ) from exc
+
+    settings.speedtest_cadence = request.cadence
+    settings.speedtest_profile = request.profile
+    settings.speedtest_timezone_offset_minutes = request.timezone_offset_minutes
+    await speed_test_manager.reset_schedule()
+    await store.record(
+        "speed_test_settings_updated",
+        "Low-impact speed test schedule updated",
+        {
+            "cadence": request.cadence,
+            "profile": request.profile,
+            "timezone_offset_minutes": request.timezone_offset_minutes,
+        },
+    )
+    return await speed_test_manager.status()
 
 
 @app.get("/api/gateway/clients")

@@ -11,6 +11,8 @@ from typing import Any, Iterable
 MAX_RECENT_EVENTS = 10
 TELEMETRY_RETENTION_DAYS = 14
 MAX_TELEMETRY_POINTS = 2000
+SPEED_TEST_RETENTION_DAYS = 730
+MAX_SPEED_TEST_POINTS = 2000
 
 
 class EventStore:
@@ -58,6 +60,41 @@ class EventStore:
                 connection.execute(
                     "CREATE INDEX IF NOT EXISTS idx_telemetry_timestamp "
                     "ON telemetry_snapshots(timestamp)"
+                )
+                connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS speed_tests (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp REAL NOT NULL,
+                        trigger TEXT NOT NULL,
+                        daypart TEXT NOT NULL,
+                        profile TEXT NOT NULL,
+                        provider TEXT NOT NULL,
+                        success INTEGER NOT NULL,
+                        download_mbps REAL,
+                        upload_mbps REAL,
+                        latency_ms REAL,
+                        jitter_ms REAL,
+                        bytes_downloaded INTEGER NOT NULL DEFAULT 0,
+                        bytes_uploaded INTEGER NOT NULL DEFAULT 0,
+                        duration_seconds REAL NOT NULL DEFAULT 0,
+                        error TEXT
+                    )
+                    """
+                )
+                connection.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_speed_tests_timestamp "
+                    "ON speed_tests(timestamp)"
+                )
+                connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS speed_test_schedule (
+                        id INTEGER PRIMARY KEY CHECK (id = 1),
+                        next_run_at REAL,
+                        slot_index INTEGER NOT NULL DEFAULT 0,
+                        updated_at REAL NOT NULL
+                    )
+                    """
                 )
 
         async with self._lock:
@@ -215,6 +252,150 @@ class EventStore:
             "points": points,
         }
 
+    async def record_speed_test(
+        self,
+        result: dict[str, Any],
+        *,
+        trigger: str,
+        daypart: str,
+    ) -> None:
+        observed_at = _parse_timestamp(result.get("observed_at"))
+        cutoff = datetime.now(timezone.utc) - timedelta(days=SPEED_TEST_RETENTION_DAYS)
+
+        def _record() -> None:
+            with self._connect() as connection:
+                connection.execute(
+                    """
+                    INSERT INTO speed_tests(
+                        timestamp, trigger, daypart, profile, provider, success,
+                        download_mbps, upload_mbps, latency_ms, jitter_ms,
+                        bytes_downloaded, bytes_uploaded, duration_seconds, error
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        observed_at.timestamp(),
+                        trigger,
+                        daypart,
+                        result.get("profile") or "gentle",
+                        result.get("provider") or "cloudflare",
+                        1 if result.get("success") else 0,
+                        result.get("download_mbps"),
+                        result.get("upload_mbps"),
+                        result.get("latency_ms"),
+                        result.get("jitter_ms"),
+                        int(result.get("bytes_downloaded") or 0),
+                        int(result.get("bytes_uploaded") or 0),
+                        float(result.get("duration_seconds") or 0),
+                        result.get("error"),
+                    ),
+                )
+                connection.execute(
+                    "DELETE FROM speed_tests WHERE timestamp < ?",
+                    (cutoff.timestamp(),),
+                )
+
+        async with self._lock:
+            await asyncio.to_thread(_record)
+
+    async def latest_speed_test(self) -> dict[str, Any] | None:
+        def _latest() -> dict[str, Any] | None:
+            with self._connect() as connection:
+                row = connection.execute(
+                    "SELECT * FROM speed_tests ORDER BY timestamp DESC LIMIT 1"
+                ).fetchone()
+            return _speed_test_row(row) if row else None
+
+        async with self._lock:
+            return await asyncio.to_thread(_latest)
+
+    async def speed_test_history(
+        self,
+        *,
+        days: int = 365,
+        limit: int = 1000,
+    ) -> dict[str, Any]:
+        safe_days = max(1, min(days, SPEED_TEST_RETENTION_DAYS))
+        safe_limit = max(20, min(limit, MAX_SPEED_TEST_POINTS))
+        since = datetime.now(timezone.utc) - timedelta(days=safe_days)
+
+        def _history() -> list[dict[str, Any]]:
+            with self._connect() as connection:
+                rows = connection.execute(
+                    "SELECT * FROM speed_tests WHERE timestamp >= ? "
+                    "ORDER BY timestamp ASC",
+                    (since.timestamp(),),
+                ).fetchall()
+            return _downsample([_speed_test_row(row) for row in rows], safe_limit)
+
+        async with self._lock:
+            points = await asyncio.to_thread(_history)
+
+        successful = [point for point in points if point["success"]]
+        total_bytes = sum(
+            point["bytes_downloaded"] + point["bytes_uploaded"] for point in points
+        )
+        return {
+            "range_days": safe_days,
+            "retention_days": SPEED_TEST_RETENTION_DAYS,
+            "count": len(points),
+            "successful_count": len(successful),
+            "failed_count": len(points) - len(successful),
+            "total_bytes": total_bytes,
+            "averages": _speed_test_averages(successful),
+            "dayparts": _speed_test_dayparts(successful),
+            "points": points,
+        }
+
+    async def get_speed_test_schedule(self) -> dict[str, Any]:
+        def _get() -> dict[str, Any]:
+            with self._connect() as connection:
+                row = connection.execute(
+                    "SELECT next_run_at, slot_index, updated_at "
+                    "FROM speed_test_schedule WHERE id = 1"
+                ).fetchone()
+            if row is None:
+                return {"next_run_at": None, "slot_index": 0, "updated_at": None}
+            return {
+                "next_run_at": datetime.fromtimestamp(row["next_run_at"], timezone.utc)
+                if row["next_run_at"] is not None
+                else None,
+                "slot_index": int(row["slot_index"]),
+                "updated_at": datetime.fromtimestamp(
+                    row["updated_at"], timezone.utc
+                ),
+            }
+
+        async with self._lock:
+            return await asyncio.to_thread(_get)
+
+    async def set_speed_test_schedule(
+        self,
+        next_run_at: datetime | None,
+        slot_index: int,
+    ) -> None:
+        updated_at = datetime.now(timezone.utc)
+
+        def _set() -> None:
+            with self._connect() as connection:
+                connection.execute(
+                    """
+                    INSERT INTO speed_test_schedule(id, next_run_at, slot_index, updated_at)
+                    VALUES (1, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        next_run_at = excluded.next_run_at,
+                        slot_index = excluded.slot_index,
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        next_run_at.timestamp() if next_run_at else None,
+                        int(slot_index),
+                        updated_at.timestamp(),
+                    ),
+                )
+
+        async with self._lock:
+            await asyncio.to_thread(_set)
+
 
 def _compact_telemetry_snapshot(overview: dict[str, Any]) -> dict[str, Any] | None:
     detection = overview.get("detection")
@@ -320,3 +501,57 @@ def _available_series(points: list[dict[str, Any]]) -> list[str]:
                 if value is not None:
                     series.add(f"{radio_key}.{metric_key}")
     return sorted(series)
+
+
+def _speed_test_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "observed_at": datetime.fromtimestamp(row["timestamp"], timezone.utc).isoformat(),
+        "trigger": row["trigger"],
+        "daypart": row["daypart"],
+        "profile": row["profile"],
+        "provider": row["provider"],
+        "success": bool(row["success"]),
+        "download_mbps": row["download_mbps"],
+        "upload_mbps": row["upload_mbps"],
+        "latency_ms": row["latency_ms"],
+        "jitter_ms": row["jitter_ms"],
+        "bytes_downloaded": int(row["bytes_downloaded"]),
+        "bytes_uploaded": int(row["bytes_uploaded"]),
+        "duration_seconds": row["duration_seconds"],
+        "error": row["error"],
+    }
+
+
+def _speed_test_averages(points: list[dict[str, Any]]) -> dict[str, float | None]:
+    def average(key: str) -> float | None:
+        values = [float(point[key]) for point in points if point.get(key) is not None]
+        return round(sum(values) / len(values), 2) if values else None
+
+    return {
+        "download_mbps": average("download_mbps"),
+        "upload_mbps": average("upload_mbps"),
+        "latency_ms": average("latency_ms"),
+        "jitter_ms": average("jitter_ms"),
+    }
+
+
+def _speed_test_dayparts(points: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    labels = {
+        "night": "Night",
+        "morning": "Morning",
+        "afternoon": "Afternoon",
+        "evening": "Evening",
+    }
+    result = []
+    for key, label in labels.items():
+        matching = [point for point in points if point.get("daypart") == key]
+        result.append(
+            {
+                "key": key,
+                "label": label,
+                "count": len(matching),
+                **_speed_test_averages(matching),
+            }
+        )
+    return result

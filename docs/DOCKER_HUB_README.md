@@ -93,6 +93,9 @@ Username: admin
   EARFCN/NR-ARFCN, TAC, cell ID, and eNB/gNB identity when available.
 - SQLite-backed signal history with 1-hour, 6-hour, 24-hour, and 7-day RSRP,
   SINR, and conditional gateway-temperature charts.
+- Optional daily, weekly, or monthly low-impact speed history with rotating
+  time-of-day samples, download/upload/latency trends, and a gentle 12.6 MB
+  default data budget.
 - Gateway model, firmware, uptime, update state, WAN, radio mode, registration,
   roaming, and cellular identity details.
 - Wi-Fi SSID and gateway Wi-Fi radio controls when supported by the gateway API.
@@ -119,7 +122,8 @@ The app stores settings, event history, and G4AR backup metadata under:
 
 Keep this volume if you want saved gateway login, map settings, OpenCellID
 configuration, event history, 14-day telemetry history, and firmware-lab backup
-manifests to persist.
+manifests to persist. It also keeps up to two years of bounded speed-test
+history when that feature is enabled.
 
 ## Common Environment Variables
 
@@ -136,6 +140,8 @@ manifests to persist.
 | `OPENCELLID_API_KEY` | empty | Optional tower lookup key |
 | `ADVANCED_SKIP_STOCK_BACKUP` | `false` | Suppress the G4AR stock-backup setup reminder only |
 | `FIRMWARE_BACKUP_DIR` | `/data/firmware-backups` | G4AR lab backup storage |
+| `SPEEDTEST_CADENCE` | `disabled` | Optional `daily`, `weekly`, or `monthly` speed tracking |
+| `SPEEDTEST_PROFILE` | `gentle` | `gentle` (about 12.6 MB) or `standard` (about 31.5 MB) per run |
 
 The app also creates `/data/control-center.env` and can update settings from the
 web UI.
@@ -184,6 +190,8 @@ Important limitations:
 - Do not expose it directly to the public internet.
 - Keep `/data` backed up if using advanced lab features.
 - Store gateway credentials only on systems you control.
+- Speed tests use Cloudflare's public measurement endpoints. Test traffic and
+  measurement metadata leave the LAN; the result history is stored locally.
 
 ## Links
 

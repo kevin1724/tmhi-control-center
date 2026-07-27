@@ -1,0 +1,365 @@
+from __future__ import annotations
+
+import asyncio
+import calendar
+import logging
+import statistics
+import time
+from datetime import datetime, timedelta, timezone
+from typing import Any
+from urllib.parse import urlencode
+
+import httpx
+
+from .storage import EventStore
+
+
+logger = logging.getLogger(__name__)
+
+CLOUDFLARE_DOWNLOAD_URL = "https://speed.cloudflare.com/__down"
+CLOUDFLARE_UPLOAD_URL = "https://speed.cloudflare.com/__up"
+SPEEDTEST_CADENCES = {"disabled", "daily", "weekly", "monthly"}
+SPEEDTEST_PROFILES: dict[str, dict[str, Any]] = {
+    "gentle": {
+        "label": "Gentle",
+        "download_bytes": 10 * 1024 * 1024,
+        "upload_bytes": 2 * 1024 * 1024,
+        "latency_samples": 3,
+    },
+    "standard": {
+        "label": "Standard",
+        "download_bytes": 25 * 1024 * 1024,
+        "upload_bytes": 5 * 1024 * 1024,
+        "latency_samples": 4,
+    },
+}
+ROTATING_HOURS = (2, 8, 14, 20)
+DAYPARTS = (
+    ("night", "Night", 0, 6),
+    ("morning", "Morning", 6, 12),
+    ("afternoon", "Afternoon", 12, 18),
+    ("evening", "Evening", 18, 24),
+)
+
+
+class SpeedTestError(RuntimeError):
+    pass
+
+
+class SpeedTestBusyError(SpeedTestError):
+    pass
+
+
+def profile_summary(profile: str) -> dict[str, Any]:
+    selected = SPEEDTEST_PROFILES.get(profile, SPEEDTEST_PROFILES["gentle"])
+    total_bytes = selected["download_bytes"] + selected["upload_bytes"]
+    return {
+        "key": profile if profile in SPEEDTEST_PROFILES else "gentle",
+        "label": selected["label"],
+        "download_bytes": selected["download_bytes"],
+        "upload_bytes": selected["upload_bytes"],
+        "estimated_bytes": total_bytes,
+        "estimated_megabytes": round(total_bytes / 1_000_000, 1),
+        "sequential": True,
+    }
+
+
+def daypart_for_hour(hour: int) -> tuple[str, str]:
+    for key, label, start, end in DAYPARTS:
+        if start <= hour < end:
+            return key, label
+    return "night", "Night"
+
+
+def next_initial_slot(
+    now: datetime,
+    timezone_offset_minutes: int,
+) -> tuple[datetime, int]:
+    local_tz = timezone(timedelta(minutes=timezone_offset_minutes))
+    local_now = now.astimezone(local_tz)
+    for index, hour in enumerate(ROTATING_HOURS):
+        candidate = local_now.replace(hour=hour, minute=0, second=0, microsecond=0)
+        if candidate > local_now:
+            return candidate.astimezone(timezone.utc), index
+    candidate = (local_now + timedelta(days=1)).replace(
+        hour=ROTATING_HOURS[0], minute=0, second=0, microsecond=0
+    )
+    return candidate.astimezone(timezone.utc), 0
+
+
+def next_scheduled_slot(
+    completed_at: datetime,
+    cadence: str,
+    completed_slot_index: int,
+    timezone_offset_minutes: int,
+) -> tuple[datetime, int]:
+    local_tz = timezone(timedelta(minutes=timezone_offset_minutes))
+    local_completed = completed_at.astimezone(local_tz)
+    next_index = (completed_slot_index + 1) % len(ROTATING_HOURS)
+    if cadence == "weekly":
+        target_date = local_completed.date() + timedelta(days=7)
+    elif cadence == "monthly":
+        year = local_completed.year + (1 if local_completed.month == 12 else 0)
+        month = 1 if local_completed.month == 12 else local_completed.month + 1
+        day = min(local_completed.day, calendar.monthrange(year, month)[1])
+        target_date = local_completed.date().replace(year=year, month=month, day=day)
+    else:
+        target_date = local_completed.date() + timedelta(days=1)
+    target = datetime.combine(
+        target_date,
+        datetime.min.time(),
+        tzinfo=local_tz,
+    ).replace(hour=ROTATING_HOURS[next_index])
+    return target.astimezone(timezone.utc), next_index
+
+
+class LowImpactSpeedTest:
+    def __init__(self, client: httpx.AsyncClient | None = None) -> None:
+        self._client = client or httpx.AsyncClient(
+            timeout=httpx.Timeout(30.0, connect=10.0),
+            limits=httpx.Limits(max_connections=1, max_keepalive_connections=1),
+            follow_redirects=True,
+            headers={"User-Agent": "TMHI-Control-Center/0.1 speed-history"},
+        )
+        self._owns_client = client is None
+        self._lock = asyncio.Lock()
+
+    @property
+    def running(self) -> bool:
+        return self._lock.locked()
+
+    async def close(self) -> None:
+        if self._owns_client:
+            await self._client.aclose()
+
+    async def run(self, profile: str = "gentle") -> dict[str, Any]:
+        if self._lock.locked():
+            raise SpeedTestBusyError("A speed test is already running")
+        selected = SPEEDTEST_PROFILES.get(profile)
+        if selected is None:
+            raise SpeedTestError(f"Unknown speed test profile: {profile}")
+
+        async with self._lock:
+            started_at = datetime.now(timezone.utc)
+            started = time.perf_counter()
+            latency_samples = await self._measure_latency(selected["latency_samples"])
+            download_mbps, downloaded = await self._measure_download(
+                selected["download_bytes"]
+            )
+            upload_mbps, uploaded = await self._measure_upload(selected["upload_bytes"])
+            latency_ms = statistics.median(latency_samples)
+            jitter_ms = (
+                statistics.mean(
+                    abs(right - left)
+                    for left, right in zip(latency_samples, latency_samples[1:])
+                )
+                if len(latency_samples) > 1
+                else 0.0
+            )
+            observed_at = datetime.now(timezone.utc)
+            return {
+                "observed_at": observed_at.isoformat(),
+                "started_at": started_at.isoformat(),
+                "profile": profile,
+                "provider": "cloudflare",
+                "success": True,
+                "download_mbps": round(download_mbps, 2),
+                "upload_mbps": round(upload_mbps, 2),
+                "latency_ms": round(latency_ms, 2),
+                "jitter_ms": round(jitter_ms, 2),
+                "bytes_downloaded": downloaded,
+                "bytes_uploaded": uploaded,
+                "duration_seconds": round(time.perf_counter() - started, 3),
+                "error": None,
+            }
+
+    async def _measure_latency(self, count: int) -> list[float]:
+        samples: list[float] = []
+        for index in range(count):
+            started = time.perf_counter()
+            response = await self._client.get(
+                CLOUDFLARE_DOWNLOAD_URL,
+                params={"bytes": 0, "measId": f"tmhi-latency-{time.time_ns()}-{index}"},
+                headers={"Cache-Control": "no-cache"},
+            )
+            response.raise_for_status()
+            samples.append((time.perf_counter() - started) * 1000)
+        return samples
+
+    async def _measure_download(self, byte_count: int) -> tuple[float, int]:
+        query = urlencode({"bytes": byte_count, "measId": f"tmhi-down-{time.time_ns()}"})
+        received = 0
+        started = time.perf_counter()
+        async with self._client.stream(
+            "GET",
+            f"{CLOUDFLARE_DOWNLOAD_URL}?{query}",
+            headers={"Cache-Control": "no-cache"},
+        ) as response:
+            response.raise_for_status()
+            async for chunk in response.aiter_bytes():
+                received += len(chunk)
+        elapsed = max(time.perf_counter() - started, 0.001)
+        if received <= 0:
+            raise SpeedTestError("The download sample returned no data")
+        return received * 8 / elapsed / 1_000_000, received
+
+    async def _measure_upload(self, byte_count: int) -> tuple[float, int]:
+        payload = b"0" * byte_count
+        started = time.perf_counter()
+        response = await self._client.post(
+            CLOUDFLARE_UPLOAD_URL,
+            params={"measId": f"tmhi-up-{time.time_ns()}"},
+            content=payload,
+            headers={"Content-Type": "application/octet-stream", "Cache-Control": "no-cache"},
+        )
+        response.raise_for_status()
+        elapsed = max(time.perf_counter() - started, 0.001)
+        return byte_count * 8 / elapsed / 1_000_000, byte_count
+
+
+class SpeedTestManager:
+    def __init__(self, settings: Any, store: EventStore) -> None:
+        self.settings = settings
+        self.store = store
+        self.runner = LowImpactSpeedTest()
+        self._stop_event = asyncio.Event()
+
+    async def initialize(self) -> None:
+        if self.settings.speedtest_cadence == "disabled":
+            await self.store.set_speed_test_schedule(None, 0)
+            return
+        schedule = await self.store.get_speed_test_schedule()
+        if schedule.get("next_run_at") is None:
+            await self.reset_schedule()
+
+    async def stop(self) -> None:
+        self._stop_event.set()
+        await self.runner.close()
+
+    async def reset_schedule(self) -> dict[str, Any]:
+        if self.settings.speedtest_cadence == "disabled":
+            await self.store.set_speed_test_schedule(None, 0)
+        else:
+            next_run, slot_index = next_initial_slot(
+                datetime.now(timezone.utc),
+                self.settings.speedtest_timezone_offset_minutes,
+            )
+            await self.store.set_speed_test_schedule(next_run, slot_index)
+        return await self.status()
+
+    async def run_scheduler(self) -> None:
+        while not self._stop_event.is_set():
+            try:
+                await self.run_if_due()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("Scheduled speed test check failed: %s", exc)
+            try:
+                await asyncio.wait_for(self._stop_event.wait(), timeout=60)
+            except TimeoutError:
+                pass
+
+    async def run_if_due(self, now: datetime | None = None) -> dict[str, Any] | None:
+        if self.settings.speedtest_cadence == "disabled" or self.runner.running:
+            return None
+        schedule = await self.store.get_speed_test_schedule()
+        next_run_at = schedule.get("next_run_at")
+        now = now or datetime.now(timezone.utc)
+        if next_run_at is None:
+            await self.reset_schedule()
+            return None
+        if next_run_at > now:
+            return None
+        return await self.run(trigger="scheduled", slot_index=schedule.get("slot_index", 0))
+
+    async def run(
+        self,
+        *,
+        trigger: str,
+        slot_index: int | None = None,
+    ) -> dict[str, Any]:
+        profile = self.settings.speedtest_profile
+        observed_at = datetime.now(timezone.utc)
+        try:
+            result = await self.runner.run(profile)
+        except SpeedTestBusyError:
+            raise
+        except Exception as exc:
+            failure = {
+                "observed_at": observed_at.isoformat(),
+                "profile": profile,
+                "provider": "cloudflare",
+                "success": False,
+                "download_mbps": None,
+                "upload_mbps": None,
+                "latency_ms": None,
+                "jitter_ms": None,
+                "bytes_downloaded": 0,
+                "bytes_uploaded": 0,
+                "duration_seconds": 0,
+                "error": str(exc),
+            }
+            await self._finish_run(failure, trigger, slot_index)
+            raise SpeedTestError(f"Speed test failed: {exc}") from exc
+        await self._finish_run(result, trigger, slot_index)
+        return result
+
+    async def _finish_run(
+        self,
+        result: dict[str, Any],
+        trigger: str,
+        slot_index: int | None,
+    ) -> None:
+        observed_at = datetime.fromisoformat(
+            str(result["observed_at"]).replace("Z", "+00:00")
+        ).astimezone(timezone.utc)
+        local_hour = (
+            observed_at
+            + timedelta(minutes=self.settings.speedtest_timezone_offset_minutes)
+        ).hour
+        daypart, _ = daypart_for_hour(local_hour)
+        await self.store.record_speed_test(
+            result,
+            trigger=trigger,
+            daypart=daypart,
+        )
+        await self.store.record(
+            "speed_test_completed" if result.get("success") else "speed_test_failed",
+            "Low-impact speed test completed" if result.get("success") else "Low-impact speed test failed",
+            {
+                "trigger": trigger,
+                "profile": result.get("profile"),
+                "download_mbps": result.get("download_mbps"),
+                "upload_mbps": result.get("upload_mbps"),
+                "error": result.get("error"),
+            },
+        )
+        if trigger == "scheduled" and self.settings.speedtest_cadence != "disabled":
+            completed_slot = int(slot_index or 0) % len(ROTATING_HOURS)
+            next_run, next_index = next_scheduled_slot(
+                observed_at,
+                self.settings.speedtest_cadence,
+                completed_slot,
+                self.settings.speedtest_timezone_offset_minutes,
+            )
+            await self.store.set_speed_test_schedule(next_run, next_index)
+
+    async def status(self) -> dict[str, Any]:
+        schedule = await self.store.get_speed_test_schedule()
+        latest = await self.store.latest_speed_test()
+        next_slot_index = int(schedule.get("slot_index", 0)) % len(ROTATING_HOURS)
+        return {
+            "cadence": self.settings.speedtest_cadence,
+            "profile": profile_summary(self.settings.speedtest_profile),
+            "running": self.runner.running,
+            "next_run_at": schedule.get("next_run_at").isoformat()
+            if schedule.get("next_run_at")
+            else None,
+            "next_daypart": daypart_for_hour(ROTATING_HOURS[next_slot_index])[1],
+            "timezone_offset_minutes": self.settings.speedtest_timezone_offset_minutes,
+            "rotating_hours": list(ROTATING_HOURS),
+            "latest": latest,
+            "provider": "cloudflare",
+            "privacy_notice": "Test traffic and measurement metadata are sent to Cloudflare.",
+        }

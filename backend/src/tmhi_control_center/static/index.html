@@ -12,7 +12,7 @@
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
     <link rel="manifest" href="/static/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260727-usb-ethernet-lab-1" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260726-speed-history-1" />
   </head>
   <body>
     <div class="app-shell">
@@ -232,6 +232,89 @@
                   </div>
                   <div id="temperatureTrendChart" class="telemetry-chart"></div>
                 </article>
+              </div>
+            </section>
+
+            <section class="trends-section speed-history-section" aria-labelledby="speedHistoryHeading">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Connection History</p>
+                  <h2 id="speedHistoryHeading">Low-Impact Speed Tracking</h2>
+                </div>
+                <div class="section-actions">
+                  <span id="speedTestHistoryTag" class="tag tag--muted">Disabled</span>
+                  <button id="speedTestRunButton" class="button button--secondary" type="button">
+                    Run Test Now
+                  </button>
+                </div>
+              </div>
+
+              <div class="speed-summary-grid">
+                <article class="speed-summary-item">
+                  <span>Download</span>
+                  <strong id="speedTestDownload">--</strong>
+                  <small id="speedTestDownloadDetail">No samples yet</small>
+                </article>
+                <article class="speed-summary-item">
+                  <span>Upload</span>
+                  <strong id="speedTestUpload">--</strong>
+                  <small id="speedTestUploadDetail">No samples yet</small>
+                </article>
+                <article class="speed-summary-item">
+                  <span>Latency</span>
+                  <strong id="speedTestLatency">--</strong>
+                  <small id="speedTestLatencyDetail">Idle sample</small>
+                </article>
+                <article class="speed-summary-item">
+                  <span>History Data</span>
+                  <strong id="speedTestDataUsed">0 MB</strong>
+                  <small id="speedTestDataDetail">Stored locally</small>
+                </article>
+              </div>
+
+              <div class="speed-history-grid">
+                <article class="chart-panel speed-chart-panel">
+                  <div class="chart-heading">
+                    <div>
+                      <span>Measured Throughput</span>
+                      <strong>Download and Upload</strong>
+                    </div>
+                    <small>Mbps</small>
+                  </div>
+                  <div id="speedTestTrendChart" class="telemetry-chart"></div>
+                  <div id="speedTestDayparts" class="daypart-grid"></div>
+                </article>
+
+                <fieldset class="tool-group speed-schedule-panel">
+                  <legend>Schedule</legend>
+                  <label class="field">
+                    <span>Automatic test</span>
+                    <select id="speedTestCadence">
+                      <option value="disabled">Off</option>
+                      <option value="daily">Once a day</option>
+                      <option value="weekly">Once a week</option>
+                      <option value="monthly">Once a month</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Data budget</span>
+                    <select id="speedTestProfile">
+                      <option value="gentle">Gentle - about 12 MB</option>
+                      <option value="standard">Standard - about 31 MB</option>
+                    </select>
+                  </label>
+                  <button id="speedTestSaveButton" class="button button--primary" type="button">
+                    Save Schedule
+                  </button>
+                  <div class="schedule-status">
+                    <strong id="speedTestNextRun">Automatic tests are off</strong>
+                    <span id="speedTestScheduleDetail">Rotates through night, morning, afternoon, and evening.</span>
+                  </div>
+                  <p class="privacy-note">
+                    Tests run one sample at a time. Measurement traffic and metadata go to Cloudflare;
+                    result history stays in this app's local database.
+                  </p>
+                </fieldset>
               </div>
             </section>
 
@@ -1010,6 +1093,6 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-    <script src="/static/app.js?v=20260727-usb-ethernet-lab-1" defer></script>
+    <script src="/static/app.js?v=20260726-speed-history-1" defer></script>
   </body>
 </html>

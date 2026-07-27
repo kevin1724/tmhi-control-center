@@ -101,6 +101,10 @@ class Settings:
     advanced_skip_stock_backup: bool = False
     firmware_backup_dir: str = "/data/firmware-backups"
 
+    speedtest_cadence: str = "disabled"
+    speedtest_profile: str = "gentle"
+    speedtest_timezone_offset_minutes: int = 0
+
     watchdog_enabled: bool = True
     dry_run: bool = True
     check_interval_seconds: int = 20
@@ -240,6 +244,22 @@ class Settings:
                 "FIRMWARE_BACKUP_DIR",
                 "/data/firmware-backups",
             ),
+            speedtest_cadence=_env(
+                managed_values,
+                "SPEEDTEST_CADENCE",
+                "disabled",
+            ),
+            speedtest_profile=_env(
+                managed_values,
+                "SPEEDTEST_PROFILE",
+                "gentle",
+            ),
+            speedtest_timezone_offset_minutes=_int(
+                managed_values,
+                "SPEEDTEST_TIMEZONE_OFFSET_MINUTES",
+                0,
+                -840,
+            ),
             watchdog_enabled=_bool(managed_values, "WATCHDOG_ENABLED", True),
             dry_run=_bool(managed_values, "DRY_RUN", True),
             check_interval_seconds=_int(
@@ -332,6 +352,16 @@ class Settings:
                 raise ValueError("ADVANCED_MODEM_CONTROL_URL must be an http(s) URL")
         if not self.firmware_backup_dir:
             raise ValueError("FIRMWARE_BACKUP_DIR cannot be empty")
+        if self.speedtest_cadence not in {"disabled", "daily", "weekly", "monthly"}:
+            raise ValueError(
+                "SPEEDTEST_CADENCE must be disabled, daily, weekly, or monthly"
+            )
+        if self.speedtest_profile not in {"gentle", "standard"}:
+            raise ValueError("SPEEDTEST_PROFILE must be gentle or standard")
+        if not -840 <= self.speedtest_timezone_offset_minutes <= 840:
+            raise ValueError(
+                "SPEEDTEST_TIMEZONE_OFFSET_MINUTES must be between -840 and 840"
+            )
         if not self.probe_urls:
             raise ValueError("At least one PROBE_URL is required")
         if self.minimum_successful_probes > len(self.probe_urls):
@@ -366,6 +396,11 @@ class Settings:
             },
             "advanced_modem": advanced_modem_summary(self),
             "firmware_backup_dir": self.firmware_backup_dir,
+            "speed_test": {
+                "cadence": self.speedtest_cadence,
+                "profile": self.speedtest_profile,
+                "timezone_offset_minutes": self.speedtest_timezone_offset_minutes,
+            },
             "watchdog_enabled": self.watchdog_enabled,
             "dry_run": self.dry_run,
             "check_interval_seconds": self.check_interval_seconds,

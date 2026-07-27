@@ -2,6 +2,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from datetime import datetime, timezone
+
 from tmhi_control_center.storage import EventStore
 
 
@@ -66,3 +68,39 @@ async def test_telemetry_history_ignores_unreachable_gateway(tmp_path) -> None:
 
     assert recorded is False
     assert (await store.telemetry_history())["count"] == 0
+
+
+async def test_speed_test_history_and_schedule_are_persisted(tmp_path) -> None:
+    store = EventStore(str(tmp_path / "control-center.db"))
+    await store.initialize()
+    observed_at = datetime(2026, 7, 26, 15, 0, tzinfo=timezone.utc)
+    await store.record_speed_test(
+        {
+            "observed_at": observed_at.isoformat(),
+            "profile": "gentle",
+            "provider": "cloudflare",
+            "success": True,
+            "download_mbps": 184.2,
+            "upload_mbps": 22.8,
+            "latency_ms": 31.4,
+            "jitter_ms": 2.2,
+            "bytes_downloaded": 10 * 1024 * 1024,
+            "bytes_uploaded": 2 * 1024 * 1024,
+            "duration_seconds": 6.5,
+            "error": None,
+        },
+        trigger="scheduled",
+        daypart="morning",
+    )
+    next_run = datetime(2026, 7, 27, 21, 0, tzinfo=timezone.utc)
+    await store.set_speed_test_schedule(next_run, 2)
+
+    history = await store.speed_test_history(days=730)
+    schedule = await store.get_speed_test_schedule()
+
+    assert history["count"] == 1
+    assert history["averages"]["download_mbps"] == 184.2
+    assert history["dayparts"][1]["label"] == "Morning"
+    assert history["dayparts"][1]["count"] == 1
+    assert schedule["next_run_at"] == next_run
+    assert schedule["slot_index"] == 2

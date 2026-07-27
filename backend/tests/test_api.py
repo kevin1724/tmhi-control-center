@@ -1044,6 +1044,59 @@ def test_settings_update_requires_password_before_live_reboots(
     assert main.settings.dry_run is True
 
 
+def test_speed_test_schedule_and_manual_run(monkeypatch, tmp_path) -> None:
+    main = load_main(monkeypatch, tmp_path)
+
+    class FakeSpeedTestRunner:
+        running = False
+
+        async def run(self, profile: str):
+            return {
+                "observed_at": datetime.now(timezone.utc).isoformat(),
+                "profile": profile,
+                "provider": "cloudflare",
+                "success": True,
+                "download_mbps": 150.5,
+                "upload_mbps": 18.25,
+                "latency_ms": 28.0,
+                "jitter_ms": 1.5,
+                "bytes_downloaded": 10 * 1024 * 1024,
+                "bytes_uploaded": 2 * 1024 * 1024,
+                "duration_seconds": 5.0,
+                "error": None,
+            }
+
+        async def close(self) -> None:
+            pass
+
+    with TestClient(main.app) as client:
+        settings_response = client.post(
+            "/api/speedtest/settings",
+            json={
+                "cadence": "weekly",
+                "profile": "gentle",
+                "timezone_offset_minutes": -420,
+            },
+        )
+        original_runner = main.speed_test_manager.runner
+        main.speed_test_manager.runner = FakeSpeedTestRunner()
+        try:
+            run_response = client.post("/api/speedtest/run")
+            history_response = client.get("/api/speedtest/history?days=365")
+        finally:
+            main.speed_test_manager.runner = original_runner
+
+    assert settings_response.status_code == 200
+    assert settings_response.json()["cadence"] == "weekly"
+    assert settings_response.json()["next_run_at"] is not None
+    assert run_response.status_code == 200
+    assert run_response.json()["download_mbps"] == 150.5
+    assert history_response.json()["successful_count"] == 1
+    saved_settings = (tmp_path / "control-center.env").read_text(encoding="utf-8")
+    assert "SPEEDTEST_CADENCE=weekly\n" in saved_settings
+    assert "SPEEDTEST_TIMEZONE_OFFSET_MINUTES=-420\n" in saved_settings
+
+
 def test_events_endpoint_returns_at_most_ten_events(monkeypatch, tmp_path) -> None:
     main = load_main(monkeypatch, tmp_path)
 
