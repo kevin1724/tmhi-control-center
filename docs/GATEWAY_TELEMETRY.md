@@ -52,8 +52,8 @@ one. Otherwise it reports the active radio combination as `4G LTE`, `5G NR`, or
 
 Temperature is never estimated. The dashboard accepts common temperature field
 names and normalizes an actual reading to Celsius and Fahrenheit. If the
-gateway response has no sensor value, the UI displays `Not exposed by firmware`
-and leaves the temperature chart empty.
+gateway response has no sensor value, the temperature tile and history chart
+are omitted from the dashboard entirely.
 
 The G4AR documentation lists an operating environment, but that ambient range
 is not an internal sensor reading and is not used as dashboard telemetry.

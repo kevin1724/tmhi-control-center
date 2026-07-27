@@ -169,8 +169,10 @@ const ids = [
   "rsrpTrendChart",
   "telemetryFreshness",
   "telemetryHistoryTag",
+  "telemetryTrendGrid",
   "temperatureDetail",
   "temperatureMetric",
+  "temperatureMetricCard",
   "temperatureTrendChart",
   "temperatureTrendPanel",
   "testFrequency",
@@ -656,12 +658,13 @@ function renderOverviewMetrics() {
   );
 
   const temperature = system.temperature;
-  setText(els.temperatureMetric, temperature?.display || "--");
-  setTone(els.temperatureMetric, thermalTone(temperature?.celsius));
-  setText(
-    els.temperatureDetail,
-    temperature ? `${formatValue(temperature.fahrenheit)} F` : "Not exposed by firmware"
-  );
+  const hasTemperature = isFiniteReading(temperature?.celsius);
+  els.temperatureMetricCard.hidden = !hasTemperature;
+  if (hasTemperature) {
+    setText(els.temperatureMetric, temperature.display || `${temperature.celsius} C`);
+    setTone(els.temperatureMetric, "info");
+    setText(els.temperatureDetail, `${formatValue(temperature.fahrenheit)} F`);
+  }
 
   setText(els.uptimeMetric, system.uptime || connection.uptime || "--");
   setTone(els.uptimeMetric, system.uptime || connection.uptime ? "good" : "muted");
@@ -1249,6 +1252,9 @@ function renderRadioStack() {
 
 function renderTelemetryTrends() {
   const points = telemetryPointsWithCurrent();
+  const hasTemperature = isFiniteReading(
+    state.overview?.system?.temperature?.celsius
+  );
   const storedCount = Number(state.telemetryHistory?.count || 0);
   setTag(
     els.telemetryHistoryTag,
@@ -1277,18 +1283,21 @@ function renderTelemetryTrends() {
     ],
     { unit: "dB", decimals: 0, emptyText: "SINR history will appear when the gateway exposes it." }
   );
-  renderLineChart(
-    els.temperatureTrendChart,
-    points,
-    [
-      { key: "temperature", label: "Gateway", className: "chart-series--thermal", read: (point) => point.system?.temperature_c },
-    ],
-    { unit: "C", decimals: 1, emptyText: "This firmware does not expose an internal temperature sensor." }
-  );
-  els.temperatureTrendPanel.classList.toggle(
-    "is-unavailable",
-    !points.some((point) => isFiniteReading(point.system?.temperature_c))
-  );
+  els.temperatureMetricCard.hidden = !hasTemperature;
+  els.temperatureTrendPanel.hidden = !hasTemperature;
+  els.telemetryTrendGrid.classList.toggle("trend-grid--two", !hasTemperature);
+  if (hasTemperature) {
+    renderLineChart(
+      els.temperatureTrendChart,
+      points,
+      [
+        { key: "temperature", label: "Gateway", className: "chart-series--thermal", read: (point) => point.system?.temperature_c },
+      ],
+      { unit: "C", decimals: 1, emptyText: "Temperature history will appear after two sensor samples." }
+    );
+  } else {
+    replaceChildren(els.temperatureTrendChart);
+  }
 }
 
 function renderSpeedTests() {
@@ -1574,10 +1583,6 @@ function formatChartTime(timestamp, hours) {
 
 function formatHistoryRange(hours) {
   return hours === 168 ? "7 days" : `${hours} hour${hours === 1 ? "" : "s"}`;
-}
-
-function thermalTone(value) {
-  return Number.isFinite(Number(value)) ? "info" : "muted";
 }
 
 function hasDisplayValue(value) {

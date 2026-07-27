@@ -92,7 +92,7 @@ Username: admin
 - Separate LTE and 5G NR cards with antenna source, CQI, bandwidth, PCI,
   EARFCN/NR-ARFCN, TAC, cell ID, and eNB/gNB identity when available.
 - SQLite-backed signal history with 1-hour, 6-hour, 24-hour, and 7-day RSRP,
-  SINR, and conditional gateway-temperature charts.
+  SINR, and real gateway-temperature charts that are omitted when unavailable.
 - Optional daily, weekly, or monthly low-impact speed history with rotating
   time-of-day samples, download/upload/latency trends, and a gentle 12.6 MB
   default data budget.

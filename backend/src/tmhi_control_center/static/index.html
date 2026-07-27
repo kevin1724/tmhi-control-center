@@ -12,7 +12,7 @@
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
     <link rel="manifest" href="/static/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260726-speed-history-1" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260726-conditional-telemetry-1" />
   </head>
   <body>
     <div class="app-shell">
@@ -133,7 +133,7 @@
                   <strong id="radioModeMetric">Unknown</strong>
                   <small id="radioModeDetail">Cellular link</small>
                 </article>
-                <article class="metric-card">
+                <article id="temperatureMetricCard" class="metric-card" hidden>
                   <span>Temperature</span>
                   <strong id="temperatureMetric">--</strong>
                   <small id="temperatureDetail">Not exposed</small>
@@ -201,7 +201,7 @@
                   </div>
                 </div>
               </div>
-              <div class="trend-grid">
+              <div id="telemetryTrendGrid" class="trend-grid trend-grid--two">
                 <article class="chart-panel">
                   <div class="chart-heading">
                     <div>
@@ -222,7 +222,7 @@
                   </div>
                   <div id="sinrTrendChart" class="telemetry-chart"></div>
                 </article>
-                <article id="temperatureTrendPanel" class="chart-panel">
+                <article id="temperatureTrendPanel" class="chart-panel" hidden>
                   <div class="chart-heading">
                     <div>
                       <span>Gateway Thermal</span>
@@ -1093,6 +1093,6 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-    <script src="/static/app.js?v=20260726-speed-history-1" defer></script>
+    <script src="/static/app.js?v=20260726-conditional-telemetry-1" defer></script>
   </body>
 </html>

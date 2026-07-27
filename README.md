@@ -29,8 +29,8 @@ installs from unknown sources. A signed release build will be added later.
   SINR, RSSI, bars, CQI, band, bandwidth, antenna source, PCI, channel number,
   cell ID, and eNB/gNB identity when the gateway exposes them.
 - Stores up to 14 days of compact telemetry in SQLite and graphs LTE/5G RSRP,
-  SINR, and gateway temperature across 1-hour, 6-hour, 24-hour, and 7-day
-  ranges.
+  SINR, and real gateway temperature readings across 1-hour, 6-hour, 24-hour,
+  and 7-day ranges.
 - Tracks download, upload, latency, and jitter with optional daily, weekly, or
   monthly low-impact speed tests. Scheduled samples rotate through four
   dayparts, run sequentially, and default to a roughly 12.6 MB data budget.
@@ -197,8 +197,8 @@ Cloudflare; saved results stay in the local SQLite database. See
 [Low-Impact Speed History](docs/SPEED_TEST_HISTORY.md) for details.
 
 Temperature is shown only when the gateway firmware returns a real sensor
-reading. Stock G4AR firmware commonly omits it, so the dashboard reports `Not
-exposed by firmware` instead of estimating a value.
+reading. Stock G4AR firmware commonly omits it, so the dashboard removes the
+temperature tile and graph instead of showing an unavailable measurement.
 
 See [Gateway Telemetry](docs/GATEWAY_TELEMETRY.md) for the full field and
 history reference.
