@@ -56,19 +56,19 @@ jobs:
           name: tmhi-control-center-debug-apk
           path: android/app/build/outputs/release-assets/tmhi-control-center-debug.apk
 
-      - name: Publish latest Android APK release
+      - name: Publish current Android APK release
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          RELEASE_NOTES="Latest debug APK built from ${GITHUB_SHA}. This APK is for testing and is not a Play Store release."
+          VERSION_NAME="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' android/app/build.gradle.kts | head -n 1)"
+          RELEASE_NOTES="Android ${VERSION_NAME} debug APK built from ${GITHUB_SHA}. This APK is for testing and is not a Play Store release."
           if gh release view android-latest >/dev/null 2>&1; then
-            gh release edit android-latest \
-              --title "Latest Android Debug APK" \
-              --notes "$RELEASE_NOTES"
-          else
-            gh release create android-latest \
-              --title "Latest Android Debug APK" \
-              --notes "$RELEASE_NOTES"
+            gh release delete android-latest --cleanup-tag --yes
           fi
-          gh release upload android-latest android/app/build/outputs/release-assets/tmhi-control-center-debug.apk --clobber
+          gh release create android-latest \
+            android/app/build/outputs/release-assets/tmhi-control-center-debug.apk \
+            --target "$GITHUB_SHA" \
+            --title "TMHI Control Center Android ${VERSION_NAME}" \
+            --notes "$RELEASE_NOTES" \
+            --latest
