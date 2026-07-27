@@ -36,6 +36,12 @@ All notable changes to this new project will be documented here.
 
 ### Changed
 
+- Matched the Android interface to the web dashboard's visual system with the
+  same neutral surfaces, dark navigation, magenta section labels, compact
+  metric grids, and 8px bordered panels.
+- Reduced Android screen density with expandable connection, radio, Wi-Fi,
+  tower, setup, playbook, security, and owner-lab sections plus compact
+  connected-device rows.
 - Reworked the web dashboard into a denser health view with radio mode,
   temperature availability, uptime, connected-device count, live radio cards,
   and compact mobile navigation.

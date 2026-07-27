@@ -9,7 +9,10 @@ or automatic reboot service. Use the Docker application for 24/7 monitoring.
 
 ## Features
 
-- Five-tab, icon-first navigation for Home, Devices, Map, Lab, and Profile.
+- Five-tab, icon-first navigation for Home, Devices, Map, Lab, and Profile,
+  styled to match the web dashboard.
+- Compact summary panels with expandable detail for gateway telemetry, devices,
+  map setup, recovery tools, and advanced settings.
 - Gateway status, connection details, signal score, and exposed radio metrics.
 - Connected-device inventory with best-effort vendor and device identification.
 - Wi-Fi name and radio controls when the gateway API supports them.

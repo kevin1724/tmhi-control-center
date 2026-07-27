@@ -5,17 +5,20 @@ import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -34,6 +37,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -45,9 +49,12 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
@@ -65,15 +72,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kevin1724.tmhicontrolcenter.core.AdvancedMode
 import com.kevin1724.tmhicontrolcenter.core.AppSettings
+import com.kevin1724.tmhicontrolcenter.core.ConnectedDevice
 import com.kevin1724.tmhicontrolcenter.core.GatewayOverview
 import com.kevin1724.tmhicontrolcenter.core.RadioProfile
 import com.kevin1724.tmhicontrolcenter.core.TowerMapData
@@ -114,16 +125,35 @@ private fun TmhiApp(state: AppUiState, viewModel: TmhiViewModel) {
     Scaffold(
         topBar = {
             TopAppBar(
+                navigationIcon = {
+                    Image(
+                        painter = painterResource(R.mipmap.ic_launcher),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .padding(start = 12.dp, end = 6.dp)
+                            .size(38.dp),
+                    )
+                },
                 title = {
                     Column {
-                        Text("TMHI Control Center", fontWeight = FontWeight.Black)
                         Text(
-                            "${screen.label} / ${state.overview?.device?.get("Model") ?: state.settings.gatewayHost}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            screen.label.uppercase(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Black,
+                        )
+                        Text(
+                            state.overview?.device?.get("Model") ?: "TMHI Control Center",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Black,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
                 actions = {
                     if (state.loading || state.actionBusy) {
                         CircularProgressIndicator(
@@ -146,8 +176,8 @@ private fun TmhiApp(state: AppUiState, viewModel: TmhiViewModel) {
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 2.dp,
+                containerColor = if (isSystemInDarkTheme()) Color(0xFF0A0F17) else Color(0xFF111722),
+                tonalElevation = 0.dp,
             ) {
                 Screen.entries.forEach { item ->
                     NavigationBarItem(
@@ -156,6 +186,13 @@ private fun TmhiApp(state: AppUiState, viewModel: TmhiViewModel) {
                         icon = { Icon(item.icon, contentDescription = item.label) },
                         label = { Text(item.label) },
                         alwaysShowLabel = false,
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = Color(0xFFF472B6),
+                            selectedTextColor = Color(0xFFF8FAFC),
+                            indicatorColor = Color(0xFF1A2230),
+                            unselectedIconColor = Color(0xFFA8B3C4),
+                            unselectedTextColor = Color(0xFFA8B3C4),
+                        ),
                     )
                 }
             }
@@ -197,9 +234,9 @@ private fun TmhiApp(state: AppUiState, viewModel: TmhiViewModel) {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DashboardScreen(state: AppUiState, onRefresh: () -> Unit) {
+    val insights = buildAndroidInsights(state)
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = screenPadding(),
@@ -209,23 +246,42 @@ private fun DashboardScreen(state: AppUiState, onRefresh: () -> Unit) {
             HeroStatusCard(state.overview)
         }
         item {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricCard("Gateway", if (state.overview?.reachable == true) "Online" else "Offline")
-                MetricCard("Signal", state.overview?.signal?.quality ?: "Unknown")
-                MetricCard("Score", state.overview?.signal?.score?.let { "$it%" } ?: "--")
-                MetricCard("Clients", state.clients.size.toString())
+            MetricGrid(
+                listOf(
+                    "Gateway" to if (state.overview?.reachable == true) "Online" else "Offline",
+                    "Signal" to (state.overview?.signal?.quality ?: "Unknown"),
+                    "Score" to (state.overview?.signal?.score?.let { "$it%" } ?: "--"),
+                    "Clients" to state.clients.size.toString(),
+                ),
+            )
+        }
+        item {
+            SectionCard("Next Best Action", eyebrow = "SETUP COACH") {
+                Text(
+                    insights.readiness.nextAction,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                DetailRow("Readiness", "${insights.readiness.score}% ${insights.readiness.label}")
+                MutedText("The full setup plan is available in Lab.")
             }
         }
         item {
-            SetupCoachCard(state, compact = true)
-        }
-        item {
-            SectionCard("Connection") {
+            ExpandableSectionCard(
+                title = "Connection",
+                eyebrow = "CELLULAR",
+                summary = compactConnectionSummary(state.overview),
+            ) {
                 DetailList(state.overview?.connection.orEmpty(), "No cellular details loaded yet.")
             }
         }
         item {
-            SectionCard("Signal Metrics") {
+            ExpandableSectionCard(
+                title = "Signal Metrics",
+                eyebrow = "RADIO",
+                summary = state.overview?.signal?.metrics?.take(2)?.joinToString(" / ") { "${it.label} ${it.value}" }
+                    ?: "No radio measurements loaded",
+            ) {
                 val metrics = state.overview?.signal?.metrics.orEmpty()
                 if (metrics.isEmpty()) {
                     MutedText("No signal metrics found yet.")
@@ -237,7 +293,9 @@ private fun DashboardScreen(state: AppUiState, onRefresh: () -> Unit) {
             }
         }
         item {
-            Button(onClick = onRefresh, enabled = !state.loading, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = onRefresh, enabled = !state.loading, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Refresh, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
                 Text("Refresh Gateway")
             }
         }
@@ -252,6 +310,8 @@ private fun DevicesScreen(
 ) {
     var ssid by remember(state.wifi?.ssid) { mutableStateOf(state.wifi?.ssid.orEmpty()) }
     var radioEnabled by remember(state.wifi?.radioEnabled) { mutableStateOf(state.wifi?.radioEnabled ?: true) }
+    var editingWifi by rememberSaveable { mutableStateOf(false) }
+    var expandedDeviceId by rememberSaveable { mutableStateOf<String?>(null) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -259,38 +319,52 @@ private fun DevicesScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            SectionCard("Wi-Fi Control") {
-                OutlinedTextField(
-                    value = ssid,
-                    onValueChange = { ssid = it.take(32) },
-                    label = { Text("SSID") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+            SectionCard("Gateway Wi-Fi", eyebrow = "NETWORK") {
+                DetailRow("SSID", state.wifi?.ssid.orEmpty())
+                DetailRow(
+                    "Radios",
+                    state.wifi?.radioEnabled?.let { if (it) "Enabled" else "Disabled" } ?: "Not reported",
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Gateway Wi-Fi radios", modifier = Modifier.weight(1f))
-                    Switch(checked = radioEnabled, onCheckedChange = { radioEnabled = it })
+                TextButton(onClick = { editingWifi = !editingWifi }) {
+                    Text(if (editingWifi) "Close controls" else "Edit Wi-Fi")
+                    Icon(
+                        if (editingWifi) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = null,
+                    )
                 }
-                Button(
-                    onClick = { onApplyWifi(ssid, radioEnabled) },
-                    enabled = state.settings.passwordConfigured && !state.actionBusy,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("Apply Wi-Fi")
+                if (editingWifi) {
+                    HorizontalDivider()
+                    OutlinedTextField(
+                        value = ssid,
+                        onValueChange = { ssid = it.take(32) },
+                        label = { Text("SSID") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Gateway Wi-Fi radios", modifier = Modifier.weight(1f))
+                        Switch(checked = radioEnabled, onCheckedChange = { radioEnabled = it })
+                    }
+                    Button(
+                        onClick = {
+                            editingWifi = false
+                            onApplyWifi(ssid, radioEnabled)
+                        },
+                        enabled = state.settings.passwordConfigured && !state.actionBusy,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Apply Wi-Fi")
+                    }
                 }
-                DetailList(
-                    mapOf(
-                        "Source" to state.wifi?.source.orEmpty(),
-                        "SSID" to state.wifi?.ssid.orEmpty(),
-                        "Radio enabled" to (state.wifi?.radioEnabled?.let { if (it) "Yes" else "No" }.orEmpty()),
-                    ),
-                    "Save the gateway password to load Wi-Fi settings.",
-                )
             }
         }
         item {
-            SectionCard("Wi-Fi Networks") {
-                val networks = state.wifi?.networks.orEmpty()
+            val networks = state.wifi?.networks.orEmpty()
+            ExpandableSectionCard(
+                title = "Wi-Fi Networks",
+                eyebrow = "RECOVERY",
+                summary = if (networks.isEmpty()) "No profiles loaded" else "${networks.size} profile(s) / ${state.wifi?.passwordCount ?: 0} restorable password(s)",
+            ) {
                 if (networks.isEmpty()) {
                     MutedText("No Wi-Fi profiles are exposed by this gateway yet.")
                 } else {
@@ -311,23 +385,33 @@ private fun DevicesScreen(
             }
         }
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedButton(onClick = onRefresh, modifier = Modifier.weight(1f)) {
-                    Text("Refresh")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column {
+                    Eyebrow("LAN DEVICES")
+                    Text("Connected Devices", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
                 }
-                OutlinedButton(onClick = onRefresh, modifier = Modifier.weight(1f)) {
-                    Text("Reload Clients")
+                IconButton(onClick = onRefresh, enabled = !state.loading) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Reload connected devices")
                 }
             }
         }
-        items(state.clients, key = { it.id }) { device ->
-            SectionCard(device.hostname) {
-                DetailRow("IP", device.ipAddress.ifBlank { "Unknown" })
-                DetailRow("MAC", device.macAddress.ifBlank { "Unknown" })
-                DetailRow("Connection", listOf(device.interfaceName, device.band, device.ssid).filter { it.isNotBlank() }.joinToString(" / ").ifBlank { "Unknown" })
-                DetailRow("Vendor", device.vendor.ifBlank { "Unknown" })
-                DetailRow("Best guess", device.bestGuess)
+        if (state.clients.isEmpty()) {
+            item {
+                EmptySurface("No connected devices reported yet.")
             }
+        }
+        items(state.clients, key = { it.id }) { device ->
+            DeviceSurface(
+                device = device,
+                expanded = expandedDeviceId == device.id,
+                onClick = {
+                    expandedDeviceId = if (expandedDeviceId == device.id) null else device.id
+                },
+            )
         }
     }
 }
@@ -392,32 +476,35 @@ private fun HomelabScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            SectionCard("Homelab Control Room") {
+            SectionCard("Homelab Control Room", eyebrow = "READINESS") {
                 Text(
                     "${insights.readiness.score}% ${insights.readiness.label}",
-                    style = MaterialTheme.typography.displaySmall,
+                    style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Black,
                 )
                 Text(insights.readiness.summary, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 DetailRow("Next action", insights.readiness.nextAction)
-                Button(onClick = onRefresh, enabled = !state.loading, modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = onRefresh, enabled = !state.loading, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.Refresh, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
                     Text("Refresh Baseline")
                 }
             }
         }
         item {
-            SectionCard("Quick Setup") {
-                listOf(
-                    "Save and test the gateway login.",
-                    "Create an encrypted Wi-Fi backup.",
-                    "Refresh after placement, antenna, or radio changes.",
-                ).forEachIndexed { index, step ->
-                    DetailRow("${index + 1}", step)
+            ExpandableSectionCard(
+                title = "Setup Plan",
+                eyebrow = "CHECKLIST",
+                summary = "${insights.setupSteps.count { it.status == "done" }} of ${insights.setupSteps.size} steps complete",
+            ) {
+                insights.setupSteps.forEachIndexed { index, step ->
+                    if (index > 0) HorizontalDivider()
+                    StepRow(step)
                 }
             }
         }
         item {
-            SectionCard("Encrypted Wi-Fi Vault") {
+            SectionCard("Encrypted Wi-Fi Vault", eyebrow = "RECOVERY") {
                 Text(
                     "Backs up every Wi-Fi name and any real, unmasked password exposed by " +
                         "the authenticated gateway API.",
@@ -466,12 +553,20 @@ private fun HomelabScreen(
             }
         }
         item {
-            SectionCard("Signal and Antenna Coach") {
+            ExpandableSectionCard(
+                title = "Signal and Antenna Coach",
+                eyebrow = "TUNING",
+                summary = insights.signalTips.firstOrNull()?.title ?: "No recommendations yet",
+            ) {
                 insights.signalTips.forEach { tip -> InsightRow(tip.title, tip.detail, tip.tone) }
             }
         }
         item {
-            SectionCard("Home Network Playbook") {
+            ExpandableSectionCard(
+                title = "Home Network Playbook",
+                eyebrow = "HOMELAB",
+                summary = "${insights.playbook.size} practical network guides",
+            ) {
                 insights.playbook.forEachIndexed { index, card ->
                     if (index > 0) HorizontalDivider()
                     Row(
@@ -510,12 +605,10 @@ private fun MapScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            SectionCard("Tower Map") {
-                MapWebView(state.towerMap, Modifier.fillMaxWidth().height(280.dp))
-                Spacer(Modifier.height(8.dp))
+            SectionCard("Serving Cell", eyebrow = "TOWER MAP") {
+                MapWebView(state.towerMap, Modifier.fillMaxWidth().height(320.dp))
                 DetailRow("Radio", state.towerMap.identity.radio.ifBlank { "Unknown" })
                 DetailRow("Band", state.towerMap.identity.band.ifBlank { "Unknown" })
-                DetailRow("Cell ID", state.towerMap.identity.cellId?.toString() ?: "Unknown")
                 state.towerMap.connectedTower?.let { tower ->
                     DetailRow("Tower", tower.label)
                     DetailRow("Distance", tower.distanceKm?.let { "$it km" } ?: "Unknown")
@@ -523,7 +616,15 @@ private fun MapScreen(
             }
         }
         item {
-            SectionCard("Map Settings") {
+            ExpandableSectionCard(
+                title = "Map Settings",
+                eyebrow = "LOCATION",
+                summary = if (state.settings.mapLatitude == null) {
+                    "Add a home location to center tower searches"
+                } else {
+                    "${state.settings.mapLatitude}, ${state.settings.mapLongitude} / ${state.settings.mapRadiusKm} km"
+                },
+            ) {
                 OutlinedTextField(key, { key = it }, label = { Text("OpenCellID API key") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(latitude, { latitude = it }, label = { Text("Latitude") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
@@ -548,13 +649,26 @@ private fun MapScreen(
                 }
             }
         }
-        items(state.towerMap.nearby, key = { it.id }) { tower ->
-            SectionCard(tower.label) {
-                DetailRow("Radio", tower.radio.ifBlank { "Unknown" })
-                DetailRow("Distance", tower.distanceKm?.let { "$it km" } ?: "Unknown")
-                DetailRow("Signal", tower.averageSignal?.let { "$it dBm" } ?: "Unknown")
-                DetailRow("Accuracy", tower.rangeMeters?.let { "$it m" } ?: "Unknown")
-                DetailRow("Samples", tower.samples?.toString() ?: "Unknown")
+        if (state.towerMap.nearby.isNotEmpty()) {
+            item {
+                ExpandableSectionCard(
+                    title = "Nearby Towers",
+                    eyebrow = "OPENCELLID",
+                    summary = "${state.towerMap.nearby.size} result(s) near the saved center",
+                ) {
+                    state.towerMap.nearby.forEachIndexed { index, tower ->
+                        if (index > 0) HorizontalDivider()
+                        Text(tower.label, fontWeight = FontWeight.Bold)
+                        Text(
+                            listOfNotNull(
+                                tower.radio.takeIf { it.isNotBlank() },
+                                tower.distanceKm?.let { "$it km" },
+                                tower.averageSignal?.let { "$it dBm" },
+                            ).joinToString(" / ").ifBlank { "No additional tower details" },
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
         }
     }
@@ -576,6 +690,7 @@ private fun SettingsScreen(
     var radioProfile by remember(state.settings.radioProfile) { mutableStateOf(state.settings.radioProfile) }
     var acknowledged by remember(state.settings.advancedAcknowledged) { mutableStateOf(state.settings.advancedAcknowledged) }
     var confirmReboot by remember { mutableStateOf(false) }
+    var editingLogin by rememberSaveable { mutableStateOf(!state.settings.passwordConfigured) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -583,41 +698,51 @@ private fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            SectionCard("Gateway Login") {
-                Text(
-                    "Connect once, then leave these settings alone. The admin password is encrypted with Android Keystore on this phone.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                OutlinedTextField(host, { host = it }, label = { Text("Gateway host") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(port, { port = it }, label = { Text("Gateway API port") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(username, { username = it }, label = { Text("Username") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(
-                    password,
-                    { password = it },
-                    label = { Text("Admin password") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Button(
-                        onClick = {
-                            onSave(state.settings.withGateway(host, port, username, password))
-                        },
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text("Save Login")
-                    }
-                    OutlinedButton(onClick = onTestLogin, modifier = Modifier.weight(1f)) {
-                        Text("Test")
+            SectionCard("Gateway Login", eyebrow = "CONNECTION") {
+                DetailRow("Address", "${state.settings.gatewayHost}:${state.settings.gatewayPort}")
+                DetailRow("Status", if (state.overview?.reachable == true) "Gateway reachable" else "Not connected")
+                TextButton(onClick = { editingLogin = !editingLogin }) {
+                    Text(if (editingLogin) "Close login setup" else "Edit login")
+                    Icon(
+                        if (editingLogin) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = null,
+                    )
+                }
+                if (editingLogin) {
+                    HorizontalDivider()
+                    MutedText("The admin password is encrypted with Android Keystore on this phone.")
+                    OutlinedTextField(host, { host = it }, label = { Text("Gateway host") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(port, { port = it }, label = { Text("Gateway API port") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(username, { username = it }, label = { Text("Username") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(
+                        password,
+                        { password = it },
+                        label = { Text("Admin password") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(
+                            onClick = {
+                                editingLogin = false
+                                onSave(state.settings.withGateway(host, port, username, password))
+                            },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Save") }
+                        OutlinedButton(onClick = onTestLogin, modifier = Modifier.weight(1f)) {
+                            Text("Test")
+                        }
                     }
                 }
-                DetailRow("Typical G4AR address", "192.168.12.1:8080")
-                DetailRow("Connection", if (state.overview?.reachable == true) "Gateway reachable" else "Not connected")
             }
         }
         item {
-            SectionCard("G4AR Owner Lab") {
+            ExpandableSectionCard(
+                title = "G4AR Owner Lab",
+                eyebrow = "ADVANCED",
+                summary = if (labEnabled) "Enabled / ${radioProfile.label}" else "Disabled for stock and leased hardware",
+            ) {
                 Text(
                     "For owner-controlled Arcadyan TMO-G4AR units only. This records experiment intent and safety acknowledgement; the stock gateway API does not provide rooting, flashing, tower-lock, or radio-profile commands.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -662,7 +787,7 @@ private fun SettingsScreen(
             }
         }
         item {
-            SectionCard("Manual Diagnostics") {
+            SectionCard("Manual Diagnostics", eyebrow = "GATEWAY TOOLS") {
                 Text(
                     "This app runs only while it is open. Use the Docker service for scheduled checks and 24/7 monitoring.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -684,7 +809,11 @@ private fun SettingsScreen(
             }
         }
         item {
-            SectionCard("Local Security") {
+            ExpandableSectionCard(
+                title = "Local Security",
+                eyebrow = "PRIVACY",
+                summary = "Keystore encrypted / no background service",
+            ) {
                 DetailRow("Login", "Android Keystore encrypted")
                 DetailRow("Wi-Fi vault", "Encrypted app-private storage")
                 DetailRow("Background service", "Disabled")
@@ -732,19 +861,6 @@ private fun RadioProfilePicker(
             }
         }
         Text(selected.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-private fun SetupCoachCard(state: AppUiState, compact: Boolean) {
-    val insights = buildAndroidInsights(state)
-    SectionCard("Setup Coach") {
-        DetailRow("Readiness", "${insights.readiness.score}% ${insights.readiness.label}")
-        Text(insights.readiness.summary, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        DetailRow("Next action", insights.readiness.nextAction)
-        insights.setupSteps
-            .let { if (compact) it.take(4) else it }
-            .forEach { step -> StepRow(step) }
     }
 }
 
@@ -804,11 +920,11 @@ private fun toneColor(tone: String): Color {
 
 @Composable
 private fun HeroStatusCard(overview: GatewayOverview?) {
-    SectionCard("Live Gateway") {
+    SectionCard("Live Gateway", eyebrow = "OVERVIEW") {
         val signal = overview?.signal
         Text(
             signal?.quality ?: "Waiting for telemetry",
-            style = MaterialTheme.typography.displaySmall,
+            style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Black,
         )
         Text(
@@ -819,32 +935,210 @@ private fun HeroStatusCard(overview: GatewayOverview?) {
 }
 
 @Composable
-private fun MetricCard(label: String, value: String) {
-    Card(
-        modifier = Modifier.width(160.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-        shape = RoundedCornerShape(8.dp),
-    ) {
-        Column(Modifier.padding(14.dp)) {
-            Text(label, style = MaterialTheme.typography.labelMedium)
-            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+private fun MetricGrid(values: List<Pair<String, String>>) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        values.chunked(2).forEach { rowValues ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                rowValues.forEach { (label, value) ->
+                    MetricCard(label, value, Modifier.weight(1f))
+                }
+                if (rowValues.size == 1) Spacer(Modifier.weight(1f))
+            }
         }
     }
 }
 
 @Composable
-private fun SectionCard(title: String, content: @Composable () -> Unit) {
+private fun MetricCard(label: String, value: String, modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier.heightIn(min = 96.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                label.uppercase(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Black,
+            )
+            Text(
+                value,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Black,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SectionCard(
+    title: String,
+    eyebrow: String? = null,
+    content: @Composable () -> Unit,
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            eyebrow?.let { Eyebrow(it) }
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
             content()
+        }
+    }
+}
+
+@Composable
+private fun ExpandableSectionCard(
+    title: String,
+    eyebrow: String,
+    summary: String,
+    initiallyExpanded: Boolean = false,
+    content: @Composable () -> Unit,
+) {
+    var expanded by rememberSaveable(title) { mutableStateOf(initiallyExpanded) }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Eyebrow(eyebrow)
+                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    Text(
+                        summary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = if (expanded) 3 else 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Icon(
+                    if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (expanded) "Collapse $title" else "Expand $title",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (expanded) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    content()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Eyebrow(text: String) {
+    Text(
+        text.uppercase(),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.primary,
+        fontWeight = FontWeight.Black,
+        letterSpacing = 0.sp,
+    )
+}
+
+@Composable
+private fun EmptySurface(text: String) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Text(
+            text,
+            modifier = Modifier.padding(16.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun DeviceSurface(device: ConnectedDevice, expanded: Boolean, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        device.hostname,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        device.bestGuess,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (device.band.isNotBlank()) TonePill(device.band, "info")
+                Icon(
+                    if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (expanded) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                DetailRow("IP", device.ipAddress.ifBlank { "Unknown" })
+                DetailRow("MAC", device.macAddress.ifBlank { "Unknown" })
+                DetailRow(
+                    "Connection",
+                    listOf(device.interfaceName, device.band, device.ssid)
+                        .filter { it.isNotBlank() }
+                        .joinToString(" / ")
+                        .ifBlank { "Unknown" },
+                )
+                DetailRow("Vendor", device.vendor.ifBlank { "Unknown" })
+            }
         }
     }
 }
@@ -861,19 +1155,18 @@ private fun DetailList(items: Map<String, String>, emptyText: String) {
 
 @Composable
 private fun DetailRow(label: String, value: String) {
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.Top,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.42f))
-        Text(value.ifBlank { "Unknown" }, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(0.58f))
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value.ifBlank { "Unknown" }, fontWeight = FontWeight.SemiBold)
     }
 }
 
 @Composable
 private fun MutedText(text: String) {
-    Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable
@@ -1173,6 +1466,19 @@ private fun mapValue(values: Map<String, String>, vararg keys: String): String {
     return ""
 }
 
+private fun compactConnectionSummary(overview: GatewayOverview?): String {
+    val connection = overview?.connection.orEmpty()
+    return listOf(
+        mapValue(connection, "Connection", "State"),
+        mapValue(connection, "Network", "Network type"),
+        mapValue(connection, "Band"),
+    )
+        .filter { it.isNotBlank() }
+        .distinct()
+        .joinToString(" / ")
+        .ifBlank { "No cellular connection details loaded" }
+}
+
 private fun towerMapHtml(data: TowerMapData): String {
     val markers = buildString {
         append("L.marker([${data.center.latitude}, ${data.center.longitude}], {title:'Map center'}).addTo(map).bindPopup('Map center');\n")
@@ -1215,26 +1521,35 @@ private fun screenPadding() = androidx.compose.foundation.layout.PaddingValues(1
 
 @Composable
 private fun TmhiTheme(content: @Composable () -> Unit) {
-    val magenta = Color(0xFFE20074)
     val dark = darkColorScheme(
-        primary = Color(0xFFFF6DB6),
-        secondary = Color(0xFF7DD3FC),
-        background = Color(0xFF0B1018),
-        surface = Color(0xFF111827),
-        surfaceVariant = Color(0xFF17202D),
+        primary = Color(0xFFF472B6),
+        secondary = Color(0xFF7AA7FF),
+        tertiary = Color(0xFF5EEAD4),
+        error = Color(0xFFFF9B7A),
+        background = Color(0xFF0D1118),
+        surface = Color(0xFF151B25),
+        surfaceVariant = Color(0xFF1C2431),
         onPrimary = Color.White,
-        onBackground = Color(0xFFE5E7EB),
-        onSurface = Color(0xFFE5E7EB),
-        onSurfaceVariant = Color(0xFFAAB6C5),
+        onBackground = Color(0xFFEDF2F7),
+        onSurface = Color(0xFFEDF2F7),
+        onSurfaceVariant = Color(0xFF9AA7BA),
+        outline = Color(0xFF46546A),
+        outlineVariant = Color(0xFF2D3747),
     )
     val light = lightColorScheme(
-        primary = magenta,
+        primary = Color(0xFFE20074),
         secondary = Color(0xFF2563EB),
-        background = Color(0xFFF6F8FB),
+        tertiary = Color(0xFF0F766E),
+        error = Color(0xFFC2410C),
+        background = Color(0xFFF3F5F8),
         surface = Color.White,
-        surfaceVariant = Color(0xFFEFF4FA),
+        surfaceVariant = Color(0xFFF7F9FC),
         onPrimary = Color.White,
-        onSurfaceVariant = Color(0xFF667085),
+        onBackground = Color(0xFF141922),
+        onSurface = Color(0xFF141922),
+        onSurfaceVariant = Color(0xFF667385),
+        outline = Color(0xFFBAC5D4),
+        outlineVariant = Color(0xFFDCE3ED),
     )
     val colors = if (isSystemInDarkTheme()) dark else light
     MaterialTheme(colorScheme = colors, content = {
