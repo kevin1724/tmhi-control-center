@@ -1058,6 +1058,7 @@ def test_speed_test_schedule_and_manual_run(monkeypatch, tmp_path) -> None:
                 "cadence": "every_10_minutes",
                 "profile": "accurate",
                 "timezone_offset_minutes": -420,
+                "retention_days": 180,
             },
         )
         original_runner = main.speed_test_manager.runner
@@ -1073,6 +1074,7 @@ def test_speed_test_schedule_and_manual_run(monkeypatch, tmp_path) -> None:
     assert settings_response.json()["profile"]["key"] == "accurate"
     assert settings_response.json()["interval_minutes"] == 10
     assert settings_response.json()["usage"]["runs_per_day"] == 144
+    assert settings_response.json()["retention_days"] == 180
     assert settings_response.json()["next_run_at"] is not None
     assert run_response.status_code == 200
     assert run_response.json()["download_mbps"] == 150.5
@@ -1081,6 +1083,7 @@ def test_speed_test_schedule_and_manual_run(monkeypatch, tmp_path) -> None:
     assert "SPEEDTEST_CADENCE=every_10_minutes\n" in saved_settings
     assert "SPEEDTEST_PROFILE=accurate\n" in saved_settings
     assert "SPEEDTEST_TIMEZONE_OFFSET_MINUTES=-420\n" in saved_settings
+    assert "SPEEDTEST_RETENTION_DAYS=180\n" in saved_settings
 
 
 def test_events_endpoint_returns_at_most_ten_events(monkeypatch, tmp_path) -> None:

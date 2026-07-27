@@ -52,9 +52,15 @@ The browser requires confirmation for high-frequency or high-volume choices.
 
 ## Storage and Privacy
 
-Results are stored in `/data/control-center.db` for up to 730 days, with a hard
-limit on returned chart points. The database records the measured rates, timing,
-data volume, provider, trigger, and any failure message.
+Results are stored in `/data/control-center.db`. The dashboard lets each user
+choose 30 days, 90 days, 6 months, 1 year, or 2 years of retention. The `All`
+chart range displays the complete retained period with a hard limit on returned
+chart points. Reducing retention permanently deletes records older than the new
+selection as soon as the settings are saved.
+
+The database records the measured rates, timing, data volume, provider, trigger,
+and any failure message. `SPEEDTEST_RETENTION_DAYS` can also be set directly to
+any value from 30 through 730.
 
 The measurement requests use Cloudflare's public speed-test download and upload
 endpoints. Test traffic and measurement metadata are sent to Cloudflare. Review

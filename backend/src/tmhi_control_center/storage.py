@@ -11,13 +11,23 @@ from typing import Any, Iterable
 MAX_RECENT_EVENTS = 10
 TELEMETRY_RETENTION_DAYS = 14
 MAX_TELEMETRY_POINTS = 2000
+MIN_SPEED_TEST_RETENTION_DAYS = 30
 SPEED_TEST_RETENTION_DAYS = 730
 MAX_SPEED_TEST_POINTS = 2000
 
 
 class EventStore:
-    def __init__(self, path: str) -> None:
+    def __init__(
+        self,
+        path: str,
+        *,
+        speed_test_retention_days: int = SPEED_TEST_RETENTION_DAYS,
+    ) -> None:
         self.path = path
+        self.speed_test_retention_days = max(
+            MIN_SPEED_TEST_RETENTION_DAYS,
+            min(int(speed_test_retention_days), SPEED_TEST_RETENTION_DAYS),
+        )
         self._lock = asyncio.Lock()
 
     def _connect(self) -> sqlite3.Connection:
@@ -260,7 +270,9 @@ class EventStore:
         daypart: str,
     ) -> None:
         observed_at = _parse_timestamp(result.get("observed_at"))
-        cutoff = datetime.now(timezone.utc) - timedelta(days=SPEED_TEST_RETENTION_DAYS)
+        cutoff = datetime.now(timezone.utc) - timedelta(
+            days=self.speed_test_retention_days
+        )
 
         def _record() -> None:
             with self._connect() as connection:
@@ -308,13 +320,33 @@ class EventStore:
         async with self._lock:
             return await asyncio.to_thread(_latest)
 
+    async def set_speed_test_retention_days(self, days: int) -> int:
+        safe_days = max(
+            MIN_SPEED_TEST_RETENTION_DAYS,
+            min(int(days), SPEED_TEST_RETENTION_DAYS),
+        )
+        cutoff = datetime.now(timezone.utc) - timedelta(days=safe_days)
+
+        def _prune() -> int:
+            with self._connect() as connection:
+                cursor = connection.execute(
+                    "DELETE FROM speed_tests WHERE timestamp < ?",
+                    (cutoff.timestamp(),),
+                )
+                return max(0, int(cursor.rowcount))
+
+        async with self._lock:
+            deleted_count = await asyncio.to_thread(_prune)
+            self.speed_test_retention_days = safe_days
+        return deleted_count
+
     async def speed_test_history(
         self,
         *,
         days: int = 365,
         limit: int = 1000,
     ) -> dict[str, Any]:
-        safe_days = max(1, min(days, SPEED_TEST_RETENTION_DAYS))
+        safe_days = max(1, min(days, self.speed_test_retention_days))
         safe_limit = max(20, min(limit, MAX_SPEED_TEST_POINTS))
         since = datetime.now(timezone.utc) - timedelta(days=safe_days)
 
@@ -336,7 +368,7 @@ class EventStore:
         )
         return {
             "range_days": safe_days,
-            "retention_days": SPEED_TEST_RETENTION_DAYS,
+            "retention_days": self.speed_test_retention_days,
             "count": len(points),
             "successful_count": len(successful),
             "failed_count": len(points) - len(successful),

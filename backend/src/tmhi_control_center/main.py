@@ -45,7 +45,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-store = EventStore(settings.database_path)
+store = EventStore(
+    settings.database_path,
+    speed_test_retention_days=settings.speedtest_retention_days,
+)
 managed_env = ManagedEnvFile(settings.managed_env_path)
 public_ip_locator = PublicIpLocator()
 checker = ConnectivityChecker(
@@ -205,6 +208,7 @@ class SpeedTestSettingsUpdateRequest(BaseModel):
     ] = "disabled"
     profile: Literal["gentle", "standard", "accurate"] = "gentle"
     timezone_offset_minutes: int = Field(default=0, ge=-840, le=840)
+    retention_days: int | None = Field(default=None, ge=30, le=730)
 
 
 class WifiUpdateRequest(BaseModel):
@@ -370,12 +374,21 @@ async def run_speed_test() -> dict[str, Any]:
 async def update_speed_test_settings(
     request: SpeedTestSettingsUpdateRequest,
 ) -> dict[str, Any]:
+    retention_days = (
+        request.retention_days
+        if request.retention_days is not None
+        else settings.speedtest_retention_days
+    )
     try:
         managed_env.set_value("SPEEDTEST_CADENCE", request.cadence)
         managed_env.set_value("SPEEDTEST_PROFILE", request.profile)
         managed_env.set_value(
             "SPEEDTEST_TIMEZONE_OFFSET_MINUTES",
             str(request.timezone_offset_minutes),
+        )
+        managed_env.set_value(
+            "SPEEDTEST_RETENTION_DAYS",
+            str(retention_days),
         )
     except OSError as exc:
         raise HTTPException(
@@ -386,6 +399,10 @@ async def update_speed_test_settings(
     settings.speedtest_cadence = request.cadence
     settings.speedtest_profile = request.profile
     settings.speedtest_timezone_offset_minutes = request.timezone_offset_minutes
+    deleted_count = await store.set_speed_test_retention_days(
+        retention_days
+    )
+    settings.speedtest_retention_days = retention_days
     await speed_test_manager.reset_schedule()
     await store.record(
         "speed_test_settings_updated",
@@ -394,6 +411,8 @@ async def update_speed_test_settings(
             "cadence": request.cadence,
             "profile": request.profile,
             "timezone_offset_minutes": request.timezone_offset_minutes,
+            "retention_days": retention_days,
+            "deleted_history_records": deleted_count,
         },
     )
     return await speed_test_manager.status()

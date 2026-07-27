@@ -431,6 +431,7 @@ class SpeedTestManager:
             if self.settings.speedtest_cadence != "disabled"
             else "disabled",
             "interval_minutes": interval_minutes,
+            "retention_days": self.settings.speedtest_retention_days,
             "timezone_offset_minutes": self.settings.speedtest_timezone_offset_minutes,
             "rotating_hours": list(ROTATING_HOURS),
             "latest": latest,

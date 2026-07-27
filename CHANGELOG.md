@@ -6,6 +6,8 @@ All notable changes to this new project will be documented here.
 
 ### Added
 
+- Added user-selectable speed-history retention for 30 days, 90 days, 6
+  months, 1 year, or 2 years, plus an `All` chart range for retained results.
 - Added 5, 10, 15, and 30-minute plus hourly speed-test schedules, a 125.8 MB
   Accurate profile, and server-side daily and 30-day usage estimates.
 - Added 24-hour, 7-day, 30-day, and 1-year speed-history chart ranges with

@@ -2,8 +2,6 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from datetime import datetime, timezone
-
 from tmhi_control_center.storage import EventStore
 
 
@@ -104,3 +102,41 @@ async def test_speed_test_history_and_schedule_are_persisted(tmp_path) -> None:
     assert history["dayparts"][1]["count"] == 1
     assert schedule["next_run_at"] == next_run
     assert schedule["slot_index"] == 2
+
+
+@pytest.mark.asyncio
+async def test_speed_test_retention_prunes_older_records_immediately(tmp_path) -> None:
+    store = EventStore(
+        str(tmp_path / "control-center.db"),
+        speed_test_retention_days=730,
+    )
+    await store.initialize()
+    now = datetime.now(timezone.utc)
+
+    for observed_at in (now - timedelta(days=60), now - timedelta(days=1)):
+        await store.record_speed_test(
+            {
+                "observed_at": observed_at.isoformat(),
+                "profile": "gentle",
+                "provider": "cloudflare",
+                "success": True,
+                "download_mbps": 100.0,
+                "upload_mbps": 20.0,
+                "latency_ms": 30.0,
+                "jitter_ms": 2.0,
+                "bytes_downloaded": 10 * 1024 * 1024,
+                "bytes_uploaded": 2 * 1024 * 1024,
+                "duration_seconds": 5.0,
+                "error": None,
+            },
+            trigger="scheduled",
+            daypart="morning",
+        )
+
+    deleted_count = await store.set_speed_test_retention_days(30)
+    history = await store.speed_test_history(days=730)
+
+    assert deleted_count == 1
+    assert history["retention_days"] == 30
+    assert history["range_days"] == 30
+    assert history["count"] == 1

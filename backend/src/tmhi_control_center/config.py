@@ -104,6 +104,7 @@ class Settings:
     speedtest_cadence: str = "disabled"
     speedtest_profile: str = "gentle"
     speedtest_timezone_offset_minutes: int = 0
+    speedtest_retention_days: int = 730
 
     watchdog_enabled: bool = True
     dry_run: bool = True
@@ -260,6 +261,12 @@ class Settings:
                 0,
                 -840,
             ),
+            speedtest_retention_days=_int(
+                managed_values,
+                "SPEEDTEST_RETENTION_DAYS",
+                730,
+                30,
+            ),
             watchdog_enabled=_bool(managed_values, "WATCHDOG_ENABLED", True),
             dry_run=_bool(managed_values, "DRY_RUN", True),
             check_interval_seconds=_int(
@@ -376,6 +383,10 @@ class Settings:
             raise ValueError(
                 "SPEEDTEST_TIMEZONE_OFFSET_MINUTES must be between -840 and 840"
             )
+        if not 30 <= self.speedtest_retention_days <= 730:
+            raise ValueError(
+                "SPEEDTEST_RETENTION_DAYS must be between 30 and 730"
+            )
         if not self.probe_urls:
             raise ValueError("At least one PROBE_URL is required")
         if self.minimum_successful_probes > len(self.probe_urls):
@@ -414,6 +425,7 @@ class Settings:
                 "cadence": self.speedtest_cadence,
                 "profile": self.speedtest_profile,
                 "timezone_offset_minutes": self.speedtest_timezone_offset_minutes,
+                "retention_days": self.speedtest_retention_days,
             },
             "watchdog_enabled": self.watchdog_enabled,
             "dry_run": self.dry_run,

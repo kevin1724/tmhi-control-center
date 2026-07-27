@@ -38,6 +38,7 @@ const state = {
   speedTestStatus: null,
   speedTestHistory: null,
   speedTestDays: 1,
+  speedTestRange: "1",
   speedTestBusy: false,
   activeView: DEFAULT_VIEW,
   theme: "light",
@@ -173,6 +174,7 @@ const ids = [
   "speedTestLatencyDetail",
   "speedTestNextRun",
   "speedTestProfile",
+  "speedTestRetention",
   "speedTestRunButton",
   "speedTestSaveButton",
   "speedTestScheduleDetail",
@@ -388,9 +390,10 @@ function bindControls() {
   });
   document.querySelectorAll("[data-speedtest-days]").forEach((button) => {
     button.addEventListener("click", () => {
-      const days = Number(button.dataset.speedtestDays);
+      const range = button.dataset.speedtestDays;
+      const days = range === "all" ? speedTestRetentionDays() : Number(range);
       if (Number.isFinite(days)) {
-        refreshSpeedTestHistory(days);
+        refreshSpeedTestHistory(days, range);
       }
     });
   });
@@ -588,8 +591,9 @@ async function refreshTelemetryHistory(hours) {
   }
 }
 
-async function refreshSpeedTestHistory(days) {
+async function refreshSpeedTestHistory(days, range = String(days)) {
   state.speedTestDays = Math.max(1, Math.min(730, Number(days) || 1));
+  state.speedTestRange = range;
   renderSpeedTests();
   try {
     state.speedTestHistory = await api(
@@ -1338,6 +1342,26 @@ function speedTestUsageEstimate(cadence, profile) {
   };
 }
 
+function speedTestRetentionDays() {
+  return Number(
+    state.speedTestStatus?.retention_days ||
+      state.config?.speed_test?.retention_days ||
+      730
+  );
+}
+
+function formatRetention(days) {
+  const value = Number(days) || 730;
+  const labels = {
+    30: "30 days",
+    90: "90 days",
+    180: "6 months",
+    365: "1 year",
+    730: "2 years",
+  };
+  return labels[value] || `${value} days`;
+}
+
 function renderSpeedTestSchedulePreview() {
   const cadence = els.speedTestCadence.value || "disabled";
   const profile = els.speedTestProfile.value || "gentle";
@@ -1445,12 +1469,12 @@ function renderSpeedTests() {
   );
   setText(
     els.speedTestDataDetail,
-    `${history.successful_count || 0} completed, ${history.failed_count || 0} failed`
+    `${history.successful_count || 0} completed, ${history.failed_count || 0} failed; keep ${formatRetention(speedTestRetentionDays())}`
   );
   document.querySelectorAll("[data-speedtest-days]").forEach((button) => {
     button.classList.toggle(
       "is-active",
-      Number(button.dataset.speedtestDays) === state.speedTestDays
+      button.dataset.speedtestDays === state.speedTestRange
     );
   });
 
@@ -1459,6 +1483,9 @@ function renderSpeedTests() {
   }
   if (document.activeElement !== els.speedTestProfile) {
     els.speedTestProfile.value = profileKey;
+  }
+  if (document.activeElement !== els.speedTestRetention) {
+    els.speedTestRetention.value = String(speedTestRetentionDays());
   }
 
   const nextRun = status.next_run_at ? formatDate(status.next_run_at) : "";
@@ -3014,15 +3041,28 @@ async function saveSettings() {
 async function saveSpeedTestSchedule() {
   const cadence = els.speedTestCadence.value;
   const profile = els.speedTestProfile.value;
+  const retentionDays = Number(els.speedTestRetention.value);
   const timezoneOffsetMinutes = -new Date().getTimezoneOffset();
   const usage = speedTestUsageEstimate(cadence, profile);
+  const currentRetentionDays = speedTestRetentionDays();
+  const confirmations = [];
 
   if (
     cadence !== "disabled" &&
     (usage.runsPerDay >= 144 || usage.thirtyDayBytes >= 100_000_000_000)
   ) {
+    confirmations.push(
+      `This schedule can run ${usage.runsPerDay.toFixed(0)} tests per day and transfer up to ${formatDataSize(usage.thirtyDayBytes)} in 30 days.`
+    );
+  }
+  if (retentionDays < currentRetentionDays) {
+    confirmations.push(
+      `Reducing history from ${formatRetention(currentRetentionDays)} to ${formatRetention(retentionDays)} permanently removes older speed-test records.`
+    );
+  }
+  if (confirmations.length) {
     const confirmed = window.confirm(
-      `This schedule can run ${usage.runsPerDay.toFixed(0)} tests per day and transfer up to ${formatDataSize(usage.thirtyDayBytes)} in 30 days. Save it anyway?`
+      `${confirmations.join("\n\n")}\n\nSave these settings?`
     );
     if (!confirmed) {
       return;
@@ -3036,11 +3076,21 @@ async function saveSpeedTestSchedule() {
         cadence,
         profile,
         timezone_offset_minutes: timezoneOffsetMinutes,
+        retention_days: retentionDays,
       },
     });
+    if (state.speedTestRange === "all" || state.speedTestDays > retentionDays) {
+      state.speedTestRange = "all";
+      state.speedTestDays = retentionDays;
+      state.speedTestHistory = await api(
+        `/api/speedtest/history?days=${state.speedTestDays}`
+      );
+    }
     state.config = await api("/api/config");
     renderAll();
-    return cadence === "disabled" ? "Automatic speed tests turned off." : "Speed test schedule saved.";
+    return cadence === "disabled"
+      ? "Speed settings saved; automatic tests are off."
+      : "Speed test settings saved.";
   });
 }
 
@@ -3246,6 +3296,7 @@ function updateControlState() {
   els.speedTestSaveButton.disabled = busy;
   els.speedTestCadence.disabled = busy;
   els.speedTestProfile.disabled = busy;
+  els.speedTestRetention.disabled = busy;
   els.downloadSnapshotButton.disabled = busy;
   els.saveAdvancedModemButton.disabled =
     busy || (advancedEnabled && !els.advancedModemAcknowledge.checked);
