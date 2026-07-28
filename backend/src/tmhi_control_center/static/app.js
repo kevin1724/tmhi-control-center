@@ -6,9 +6,11 @@ const DEFAULT_MAP_RADIUS_KM = 0.8;
 const MAP_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const LIVE_POLL_INTERVAL_MS = 60000;
 const SPEED_TEST_PROFILE_BYTES = {
-  gentle: 12 * 1024 * 1024,
-  standard: 30 * 1024 * 1024,
-  accurate: 120 * 1024 * 1024,
+  gentle: 12_000_000,
+  standard: 30_000_000,
+  accurate: 125_000_000,
+  extended: 300_000_000,
+  maximum: 1_000_000_000,
 };
 const SPEED_TEST_RUNS_PER_DAY = {
   disabled: 0,
@@ -557,9 +559,10 @@ async function refreshLiveData() {
   }
 
   state.liveRefreshing = true;
-  const [statusResult, overviewResult] = await Promise.allSettled([
+  const [statusResult, overviewResult, historyResult] = await Promise.allSettled([
     api("/api/status"),
     api("/api/gateway/overview"),
+    api(`/api/gateway/telemetry/history?hours=${state.telemetryHours}`),
   ]);
   if (statusResult.status === "fulfilled") {
     state.status = statusResult.value;
@@ -567,11 +570,15 @@ async function refreshLiveData() {
   if (overviewResult.status === "fulfilled") {
     state.overview = overviewResult.value;
   }
+  if (historyResult.status === "fulfilled") {
+    state.telemetryHistory = historyResult.value;
+  }
 
   renderHeader();
   renderOverviewMetrics();
   renderRadioStack();
   renderSignal();
+  renderTelemetryTrends();
   renderDetails();
   setText(els.lastRefresh, `Live ${formatTime(new Date())}`);
   state.lastLiveRefreshAt = Date.now();
@@ -1287,10 +1294,24 @@ function renderTelemetryTrends() {
     state.overview?.system?.temperature?.celsius
   );
   const storedCount = Number(state.telemetryHistory?.count || 0);
+  const collector = state.telemetryHistory?.collector || {};
+  const configuredCollector = state.config?.telemetry_history || {};
+  const collectorEnabled = collector.enabled ?? configuredCollector.enabled ?? true;
+  const collectorInterval = Number(
+    collector.interval_seconds || configuredCollector.sample_interval_seconds || 60
+  );
+  const intervalLabel = collectorInterval >= 60
+    ? `${Math.round(collectorInterval / 60)}m`
+    : `${Math.round(collectorInterval)}s`;
+  const collectorError = collector.last_error;
   setTag(
     els.telemetryHistoryTag,
-    storedCount ? `${storedCount} samples / ${formatHistoryRange(state.telemetryHours)}` : "Collecting",
-    storedCount >= 2 ? "good" : "muted"
+    storedCount
+      ? `${storedCount} / ${formatHistoryRange(state.telemetryHours)} / auto ${intervalLabel}`
+      : collectorEnabled
+        ? `Auto collecting / ${intervalLabel}`
+        : "Collection off",
+    collectorError ? "warn" : storedCount >= 2 || collectorEnabled ? "good" : "muted"
   );
   document.querySelectorAll("[data-telemetry-hours]").forEach((button) => {
     button.classList.toggle("is-active", Number(button.dataset.telemetryHours) === state.telemetryHours);

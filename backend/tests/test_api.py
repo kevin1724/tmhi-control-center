@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 def load_main(monkeypatch, tmp_path):
     monkeypatch.setenv("WATCHDOG_ENABLED", "false")
+    monkeypatch.setenv("TELEMETRY_COLLECTION_ENABLED", "false")
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "control-center.db"))
     monkeypatch.setenv("WATCHDOG_ENV_PATH", str(tmp_path / "control-center.env"))
     monkeypatch.setenv("FIRMWARE_BACKUP_DIR", str(tmp_path / "firmware-backups"))

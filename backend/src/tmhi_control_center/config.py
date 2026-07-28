@@ -105,6 +105,8 @@ class Settings:
     speedtest_profile: str = "gentle"
     speedtest_timezone_offset_minutes: int = 0
     speedtest_retention_days: int = 730
+    telemetry_collection_enabled: bool = True
+    telemetry_sample_interval_seconds: int = 60
 
     watchdog_enabled: bool = True
     dry_run: bool = True
@@ -267,6 +269,17 @@ class Settings:
                 730,
                 30,
             ),
+            telemetry_collection_enabled=_bool(
+                managed_values,
+                "TELEMETRY_COLLECTION_ENABLED",
+                True,
+            ),
+            telemetry_sample_interval_seconds=_int(
+                managed_values,
+                "TELEMETRY_SAMPLE_INTERVAL_SECONDS",
+                60,
+                30,
+            ),
             watchdog_enabled=_bool(managed_values, "WATCHDOG_ENABLED", True),
             dry_run=_bool(managed_values, "DRY_RUN", True),
             check_interval_seconds=_int(
@@ -375,9 +388,16 @@ class Settings:
                 "every_10_minutes, every_15_minutes, every_30_minutes, hourly, "
                 "daily, weekly, or monthly"
             )
-        if self.speedtest_profile not in {"gentle", "standard", "accurate"}:
+        if self.speedtest_profile not in {
+            "gentle",
+            "standard",
+            "accurate",
+            "extended",
+            "maximum",
+        }:
             raise ValueError(
-                "SPEEDTEST_PROFILE must be gentle, standard, or accurate"
+                "SPEEDTEST_PROFILE must be gentle, standard, accurate, "
+                "extended, or maximum"
             )
         if not -840 <= self.speedtest_timezone_offset_minutes <= 840:
             raise ValueError(
@@ -386,6 +406,10 @@ class Settings:
         if not 30 <= self.speedtest_retention_days <= 730:
             raise ValueError(
                 "SPEEDTEST_RETENTION_DAYS must be between 30 and 730"
+            )
+        if self.telemetry_sample_interval_seconds > 3600:
+            raise ValueError(
+                "TELEMETRY_SAMPLE_INTERVAL_SECONDS must be 3600 or less"
             )
         if not self.probe_urls:
             raise ValueError("At least one PROBE_URL is required")
@@ -426,6 +450,10 @@ class Settings:
                 "profile": self.speedtest_profile,
                 "timezone_offset_minutes": self.speedtest_timezone_offset_minutes,
                 "retention_days": self.speedtest_retention_days,
+            },
+            "telemetry_history": {
+                "enabled": self.telemetry_collection_enabled,
+                "sample_interval_seconds": self.telemetry_sample_interval_seconds,
             },
             "watchdog_enabled": self.watchdog_enabled,
             "dry_run": self.dry_run,

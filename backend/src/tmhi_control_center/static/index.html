@@ -855,8 +855,10 @@
                     <span>Test size</span>
                     <select id="speedTestProfile">
                       <option value="gentle">Gentle - about 12 MB</option>
-                      <option value="standard">Standard - about 31 MB</option>
-                      <option value="accurate">Accurate - about 126 MB</option>
+                      <option value="standard">Standard - about 30 MB</option>
+                      <option value="accurate">Accurate - about 125 MB</option>
+                      <option value="extended">Extended - about 300 MB</option>
+                      <option value="maximum">Maximum - about 1 GB</option>
                     </select>
                   </label>
                   <label class="field">
@@ -882,8 +884,8 @@
                   <span id="speedTestUsageWarning">Manual tests still use the selected profile.</span>
                 </div>
                 <p class="privacy-note">
-                  Download and upload samples run one at a time. Measurement traffic and metadata go to Cloudflare;
-                  result history stays in this app's local database.
+                  Large tests use reliable 25 MB requests and stream uploads without loading the full test into memory.
+                  Measurement traffic and metadata go to Cloudflare; result history stays in this app's local database.
                 </p>
               </fieldset>
 

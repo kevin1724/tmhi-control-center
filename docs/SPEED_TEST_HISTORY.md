@@ -30,24 +30,32 @@ time is off by an hour.
 
 | Profile | Download | Upload | Maximum per run |
 | --- | ---: | ---: | ---: |
-| `Gentle` | 10 MiB | 2 MiB | about 12.6 MB |
-| `Standard` | 25 MiB | 5 MiB | about 31.5 MB |
-| `Accurate` | 100 MiB | 20 MiB | about 125.8 MB |
+| `Gentle` | 10 MB | 2 MB | 12 MB |
+| `Standard` | 25 MB | 5 MB | 30 MB |
+| `Accurate` | 100 MB | 25 MB | 125 MB |
+| `Extended` | 250 MB | 50 MB | 300 MB |
+| `Maximum` | 800 MB | 200 MB | 1 GB |
 
 Latency probes, the download sample, and the upload sample run sequentially.
 Only one speed test can run at a time. These bounded samples are intended for
-trend comparison. Accurate uses a longer transfer to give fast connections more
-time to reach steady throughput, but a single-connection result may still be
-lower than a large multi-connection benchmark.
+trend comparison. Transfers are split into 25 MB provider requests so a large
+profile does not depend on one oversized request. Upload bodies are streamed in
+small chunks instead of being allocated as one large in-memory payload.
+
+Accurate and larger profiles give fast connections more time to reach steady
+throughput, but a sequential single-connection result may still be lower than a
+large multi-connection benchmark.
 
 The Settings panel calculates the maximum daily and 30-day transfer before the
 schedule is saved. For context, `Every 5 minutes` runs 288 tests per day:
 
 | Profile | Maximum per day | Maximum per 30 days |
 | --- | ---: | ---: |
-| `Gentle` | about 3.62 GB | about 108.7 GB |
-| `Standard` | about 9.06 GB | about 271.8 GB |
-| `Accurate` | about 36.24 GB | about 1.09 TB |
+| `Gentle` | 3.46 GB | 103.68 GB |
+| `Standard` | 8.64 GB | 259.20 GB |
+| `Accurate` | 36.00 GB | 1.08 TB |
+| `Extended` | 86.40 GB | 2.59 TB |
+| `Maximum` | 288.00 GB | 8.64 TB |
 
 The browser requires confirmation for high-frequency or high-volume choices.
 

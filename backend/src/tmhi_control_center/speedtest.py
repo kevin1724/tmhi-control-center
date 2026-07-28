@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 CLOUDFLARE_DOWNLOAD_URL = "https://speed.cloudflare.com/__down"
 CLOUDFLARE_UPLOAD_URL = "https://speed.cloudflare.com/__up"
+MAX_TRANSFER_REQUEST_BYTES = 25_000_000
+UPLOAD_STREAM_CHUNK_BYTES = 64 * 1024
 INTERVAL_CADENCE_MINUTES = {
     "every_5_minutes": 5,
     "every_10_minutes": 10,
@@ -35,21 +37,33 @@ SPEEDTEST_CADENCES = {
 SPEEDTEST_PROFILES: dict[str, dict[str, Any]] = {
     "gentle": {
         "label": "Gentle",
-        "download_bytes": 10 * 1024 * 1024,
-        "upload_bytes": 2 * 1024 * 1024,
+        "download_bytes": 10_000_000,
+        "upload_bytes": 2_000_000,
         "latency_samples": 3,
     },
     "standard": {
         "label": "Standard",
-        "download_bytes": 25 * 1024 * 1024,
-        "upload_bytes": 5 * 1024 * 1024,
+        "download_bytes": 25_000_000,
+        "upload_bytes": 5_000_000,
         "latency_samples": 4,
     },
     "accurate": {
         "label": "Accurate",
-        "download_bytes": 100 * 1024 * 1024,
-        "upload_bytes": 20 * 1024 * 1024,
+        "download_bytes": 100_000_000,
+        "upload_bytes": 25_000_000,
         "latency_samples": 6,
+    },
+    "extended": {
+        "label": "Extended",
+        "download_bytes": 250_000_000,
+        "upload_bytes": 50_000_000,
+        "latency_samples": 8,
+    },
+    "maximum": {
+        "label": "Maximum",
+        "download_bytes": 800_000_000,
+        "upload_bytes": 200_000_000,
+        "latency_samples": 10,
     },
 }
 ROTATING_HOURS = (2, 8, 14, 20)
@@ -69,6 +83,29 @@ class SpeedTestBusyError(SpeedTestError):
     pass
 
 
+def transfer_chunks(total_bytes: int) -> list[int]:
+    remaining = max(0, int(total_bytes))
+    chunks: list[int] = []
+    while remaining:
+        chunk_size = min(remaining, MAX_TRANSFER_REQUEST_BYTES)
+        chunks.append(chunk_size)
+        remaining -= chunk_size
+    return chunks
+
+
+class ZeroByteStream(httpx.AsyncByteStream):
+    def __init__(self, byte_count: int) -> None:
+        self.byte_count = max(0, int(byte_count))
+
+    async def __aiter__(self):
+        remaining = self.byte_count
+        payload = b"0" * min(UPLOAD_STREAM_CHUNK_BYTES, remaining)
+        while remaining:
+            chunk_size = min(len(payload), remaining)
+            yield payload[:chunk_size]
+            remaining -= chunk_size
+
+
 def profile_summary(profile: str) -> dict[str, Any]:
     selected = SPEEDTEST_PROFILES.get(profile, SPEEDTEST_PROFILES["gentle"])
     total_bytes = selected["download_bytes"] + selected["upload_bytes"]
@@ -80,6 +117,9 @@ def profile_summary(profile: str) -> dict[str, Any]:
         "estimated_bytes": total_bytes,
         "estimated_megabytes": round(total_bytes / 1_000_000, 1),
         "sequential": True,
+        "request_chunk_bytes": MAX_TRANSFER_REQUEST_BYTES,
+        "download_requests": len(transfer_chunks(selected["download_bytes"])),
+        "upload_requests": len(transfer_chunks(selected["upload_bytes"])),
     }
 
 
@@ -242,34 +282,46 @@ class LowImpactSpeedTest:
         return samples
 
     async def _measure_download(self, byte_count: int) -> tuple[float, int]:
-        query = urlencode({"bytes": byte_count, "measId": f"tmhi-down-{time.time_ns()}"})
         received = 0
         started = time.perf_counter()
-        async with self._client.stream(
-            "GET",
-            f"{CLOUDFLARE_DOWNLOAD_URL}?{query}",
-            headers={"Cache-Control": "no-cache"},
-        ) as response:
-            response.raise_for_status()
-            async for chunk in response.aiter_bytes():
-                received += len(chunk)
+        for index, chunk_size in enumerate(transfer_chunks(byte_count)):
+            query = urlencode(
+                {
+                    "bytes": chunk_size,
+                    "measId": f"tmhi-down-{time.time_ns()}-{index}",
+                }
+            )
+            async with self._client.stream(
+                "GET",
+                f"{CLOUDFLARE_DOWNLOAD_URL}?{query}",
+                headers={"Cache-Control": "no-cache"},
+            ) as response:
+                response.raise_for_status()
+                async for chunk in response.aiter_bytes():
+                    received += len(chunk)
         elapsed = max(time.perf_counter() - started, 0.001)
         if received <= 0:
             raise SpeedTestError("The download sample returned no data")
         return received * 8 / elapsed / 1_000_000, received
 
     async def _measure_upload(self, byte_count: int) -> tuple[float, int]:
-        payload = b"0" * byte_count
+        uploaded = 0
         started = time.perf_counter()
-        response = await self._client.post(
-            CLOUDFLARE_UPLOAD_URL,
-            params={"measId": f"tmhi-up-{time.time_ns()}"},
-            content=payload,
-            headers={"Content-Type": "application/octet-stream", "Cache-Control": "no-cache"},
-        )
-        response.raise_for_status()
+        for index, chunk_size in enumerate(transfer_chunks(byte_count)):
+            response = await self._client.post(
+                CLOUDFLARE_UPLOAD_URL,
+                params={"measId": f"tmhi-up-{time.time_ns()}-{index}"},
+                content=ZeroByteStream(chunk_size),
+                headers={
+                    "Content-Type": "application/octet-stream",
+                    "Content-Length": str(chunk_size),
+                    "Cache-Control": "no-cache",
+                },
+            )
+            response.raise_for_status()
+            uploaded += chunk_size
         elapsed = max(time.perf_counter() - started, 0.001)
-        return byte_count * 8 / elapsed / 1_000_000, byte_count
+        return uploaded * 8 / elapsed / 1_000_000, uploaded
 
 
 class SpeedTestManager:

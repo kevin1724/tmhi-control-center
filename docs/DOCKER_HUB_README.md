@@ -141,8 +141,10 @@ history when that feature is enabled.
 | `ADVANCED_SKIP_STOCK_BACKUP` | `false` | Suppress the G4AR stock-backup setup reminder only |
 | `FIRMWARE_BACKUP_DIR` | `/data/firmware-backups` | G4AR lab backup storage |
 | `SPEEDTEST_CADENCE` | `disabled` | `every_5_minutes`, `every_10_minutes`, `every_15_minutes`, `every_30_minutes`, `hourly`, `daily`, `weekly`, or `monthly` |
-| `SPEEDTEST_PROFILE` | `gentle` | `gentle` (12.6 MB), `standard` (31.5 MB), or `accurate` (125.8 MB) per run |
+| `SPEEDTEST_PROFILE` | `gentle` | `gentle` (12 MB), `standard` (30 MB), `accurate` (125 MB), `extended` (300 MB), or `maximum` (1 GB) |
 | `SPEEDTEST_RETENTION_DAYS` | `730` | Retain speed-test results for 30 to 730 days |
+| `TELEMETRY_COLLECTION_ENABLED` | `true` | Keep building signal history when no browser is open |
+| `TELEMETRY_SAMPLE_INTERVAL_SECONDS` | `60` | Background signal sample interval from 30 to 3,600 seconds |
 
 The app also creates `/data/control-center.env` and can update settings from the
 web UI.

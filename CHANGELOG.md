@@ -6,9 +6,13 @@ All notable changes to this new project will be documented here.
 
 ### Added
 
+- Added 300 MB Extended and 1 GB Maximum speed-test profiles with explicit
+  schedule and manual-run data warnings.
+- Added Docker-owned gateway telemetry collection so signal and antenna graphs
+  continue accumulating every minute while no browser is open.
 - Added user-selectable speed-history retention for 30 days, 90 days, 6
   months, 1 year, or 2 years, plus an `All` chart range for retained results.
-- Added 5, 10, 15, and 30-minute plus hourly speed-test schedules, a 125.8 MB
+- Added 5, 10, 15, and 30-minute plus hourly speed-test schedules, a 125 MB
   Accurate profile, and server-side daily and 30-day usage estimates.
 - Added 24-hour, 7-day, 30-day, and 1-year speed-history chart ranges with
   explicit high-volume confirmation in the web dashboard.
@@ -42,6 +46,9 @@ All notable changes to this new project will be documented here.
 
 ### Changed
 
+- Reworked every speed-test profile into bounded 25 MB provider requests and
+  streamed uploads, fixing the failing 125 MB Accurate profile while keeping
+  memory usage bounded for larger tests.
 - Moved automatic speed-test scheduling, test size, retention, traffic
   estimates, and save controls from the dashboard into Settings.
 - Matched the Android interface to the web dashboard's visual system with the

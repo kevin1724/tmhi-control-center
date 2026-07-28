@@ -55,3 +55,25 @@ def test_managed_settings_round_trip_quoted_password(tmp_path) -> None:
     managed_env.set_value("GATEWAY_PASSWORD", 'space # and "quote"')
 
     assert managed_env.load()["GATEWAY_PASSWORD"] == 'space # and "quote"'
+
+
+def test_large_speed_profile_and_background_telemetry_settings(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    env_path = tmp_path / "control-center.env"
+    monkeypatch.setenv("WATCHDOG_ENV_PATH", str(env_path))
+    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "control-center.db"))
+    monkeypatch.setenv("SPEEDTEST_PROFILE", "maximum")
+    monkeypatch.setenv("TELEMETRY_COLLECTION_ENABLED", "true")
+    monkeypatch.setenv("TELEMETRY_SAMPLE_INTERVAL_SECONDS", "90")
+
+    settings = Settings.from_env()
+
+    assert settings.speedtest_profile == "maximum"
+    assert settings.telemetry_collection_enabled is True
+    assert settings.telemetry_sample_interval_seconds == 90
+    assert settings.safe_summary()["telemetry_history"] == {
+        "enabled": True,
+        "sample_interval_seconds": 90,
+    }

@@ -33,6 +33,7 @@ from .g4ar_root import assess_g4ar_root_readiness, g4ar_root_research_status
 from .insights import build_homelab_insights
 from .speedtest import SpeedTestBusyError, SpeedTestError, SpeedTestManager
 from .storage import EventStore
+from .telemetry import GatewayTelemetryCollector
 from .towers import build_tower_map_payload
 from .usb_lab import UsbProbeError, g4ar_usb_status, probe_g4ar_usb
 from .watchdog import Watchdog
@@ -67,18 +68,35 @@ watchdog = Watchdog(settings, checker, gateway, store)
 watchdog_task: asyncio.Task[None] | None = None
 speed_test_manager = SpeedTestManager(settings, store)
 speed_test_task: asyncio.Task[None] | None = None
+
+
+async def _gateway_overview_provider() -> dict[str, Any]:
+    return await gateway.overview()
+
+
+telemetry_collector = GatewayTelemetryCollector(
+    _gateway_overview_provider,
+    store,
+    interval_seconds=settings.telemetry_sample_interval_seconds,
+    enabled=settings.telemetry_collection_enabled,
+)
+telemetry_task: asyncio.Task[None] | None = None
 STATIC_DIR = Path(__file__).parent / "static"
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    global watchdog_task, speed_test_task
+    global watchdog_task, speed_test_task, telemetry_task
     await store.initialize()
     await speed_test_manager.initialize()
     watchdog_task = asyncio.create_task(watchdog.run(), name="tmhi-control-center")
     speed_test_task = asyncio.create_task(
         speed_test_manager.run_scheduler(),
         name="tmhi-speed-test-scheduler",
+    )
+    telemetry_task = asyncio.create_task(
+        telemetry_collector.run(),
+        name="tmhi-gateway-telemetry-collector",
     )
     try:
         yield
@@ -94,6 +112,13 @@ async def lifespan(_: FastAPI):
             speed_test_task.cancel()
             try:
                 await speed_test_task
+            except asyncio.CancelledError:
+                pass
+        await telemetry_collector.stop()
+        if telemetry_task:
+            telemetry_task.cancel()
+            try:
+                await telemetry_task
             except asyncio.CancelledError:
                 pass
         await speed_test_manager.stop()
@@ -206,7 +231,13 @@ class SpeedTestSettingsUpdateRequest(BaseModel):
         "weekly",
         "monthly",
     ] = "disabled"
-    profile: Literal["gentle", "standard", "accurate"] = "gentle"
+    profile: Literal[
+        "gentle",
+        "standard",
+        "accurate",
+        "extended",
+        "maximum",
+    ] = "gentle"
     timezone_offset_minutes: int = Field(default=0, ge=-840, le=840)
     retention_days: int | None = Field(default=None, ge=30, le=730)
 
@@ -328,12 +359,7 @@ async def homelab_snapshot(
 @app.get("/api/gateway/overview")
 async def gateway_overview() -> dict[str, Any]:
     try:
-        overview = await gateway.overview()
-        try:
-            await store.record_telemetry(overview)
-        except Exception as exc:
-            logger.warning("Gateway telemetry history could not be recorded: %s", exc)
-        return overview
+        return await telemetry_collector.collect_once(max_age_seconds=15)
     except Exception as exc:
         logger.exception("Gateway overview failed")
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -344,7 +370,9 @@ async def gateway_telemetry_history(
     hours: int = Query(default=6, ge=1, le=336),
     limit: int = Query(default=720, ge=20, le=2000),
 ) -> dict[str, Any]:
-    return await store.telemetry_history(hours=hours, limit=limit)
+    history = await store.telemetry_history(hours=hours, limit=limit)
+    history["collector"] = telemetry_collector.status()
+    return history
 
 
 @app.get("/api/speedtest/status")

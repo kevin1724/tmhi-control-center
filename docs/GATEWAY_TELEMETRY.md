@@ -60,9 +60,9 @@ is not an internal sensor reading and is not used as dashboard telemetry.
 
 ## History And Retention
 
-Every successful dashboard overview stores a compact snapshot in the same
-SQLite database used by the app. The default 30-second web refresh builds the
-history while the dashboard is open.
+The Docker backend stores a compact snapshot in the same SQLite database used
+by the app every minute by default. Collection continues while the browser is
+closed, and the dashboard fetches the growing history during its live refresh.
 
 - Retention: 14 days.
 - Available ranges: 1 hour, 6 hours, 24 hours, and 7 days.
@@ -70,6 +70,10 @@ history while the dashboard is open.
 - Large ranges are evenly downsampled while preserving the first and latest
   samples.
 - Unreachable-gateway responses are not written as zero-value measurements.
+
+Set `TELEMETRY_COLLECTION_ENABLED=false` to disable the collector. Set
+`TELEMETRY_SAMPLE_INTERVAL_SECONDS` from 30 through 3,600 to change the sample
+interval; one minute is a useful default for antenna aiming and day-long trends.
 
 The stored snapshot excludes credentials, SIM identifiers, full MAC addresses,
 and other private gateway fields.

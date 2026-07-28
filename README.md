@@ -175,8 +175,10 @@ Common settings:
 | `ADVANCED_SKIP_STOCK_BACKUP` | `false` | Suppress the G4AR stock-backup setup reminder without unlocking firmware work |
 | `FIRMWARE_BACKUP_DIR` | `/data/firmware-backups` | Local G4AR backup storage |
 | `SPEEDTEST_CADENCE` | `disabled` | From `every_5_minutes` through `monthly`; see the speed-history guide |
-| `SPEEDTEST_PROFILE` | `gentle` | Per-run test size: `gentle`, `standard`, or `accurate` |
+| `SPEEDTEST_PROFILE` | `gentle` | Per-run test size from 12 MB `gentle` through 1 GB `maximum` |
 | `SPEEDTEST_RETENTION_DAYS` | `730` | Keep speed-test history for 30 to 730 days |
+| `TELEMETRY_COLLECTION_ENABLED` | `true` | Collect signal history in Docker without an open browser |
+| `TELEMETRY_SAMPLE_INTERVAL_SECONDS` | `60` | Background gateway signal sample interval, from 30 to 3,600 seconds |
 | `DRY_RUN` | `true` | Prevent automatic reboot actions while testing |
 
 See [.env.example](.env.example) for the full reference.
@@ -193,9 +195,11 @@ Speed history is disabled by default. Settings supports 5, 10, 15, and
 The chart opens on the last 24 hours, while longer ranges remain available.
 Download and upload samples run one after the other. Settings contains the
 automatic schedule, test size, retention, and estimated daily and 30-day
-traffic. The Accurate profile uses about 125.8 MB per run for a more sustained
-measurement. Users can retain results for 30 days, 90 days, 6 months, 1 year,
-or 2 years and open the complete retained range from the dashboard chart.
+traffic. Test sizes range from 12 MB through 1 GB. Accurate and larger profiles
+use multiple 25 MB requests so provider request limits do not break the run,
+and uploads are streamed to keep Docker memory bounded. Users can retain
+results for 30 days, 90 days, 6 months, 1 year, or 2 years and open the
+complete retained range from the dashboard chart.
 Reducing retention immediately removes older records. Test traffic and
 measurement metadata go to Cloudflare; saved results stay in the local SQLite
 database. See
@@ -204,6 +208,10 @@ database. See
 Temperature is shown only when the gateway firmware returns a real sensor
 reading. Stock G4AR firmware commonly omits it, so the dashboard removes the
 temperature tile and graph instead of showing an unavailable measurement.
+
+Docker samples available LTE/5G signal and antenna telemetry every minute by
+default, even when nobody has the dashboard open. Opening the dashboard reads
+that stored history and continues refreshing the visible graphs once per minute.
 
 See [Gateway Telemetry](docs/GATEWAY_TELEMETRY.md) for the full field and
 history reference.
